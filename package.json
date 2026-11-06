@@ -1,0 +1,104 @@
+{
+  "name": "spiderpdf",
+  "productName": "SpiderPDF",
+  "version": "0.1.0",
+  "description": "Editor de PDF propio, sin servicios externos",
+  "author": "Diego",
+  "license": "UNLICENSED",
+  "private": true,
+  "type": "module",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "concurrently -k -n vite,electron \"vite\" \"wait-on tcp:5173 && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron .\"",
+    "web": "vite",
+    "test:e2e": "vite build && node build/helper/build.cjs && playwright test -c test/e2e/playwright.config.mjs",
+    "build": "vite build",
+    "start": "vite build && electron .",
+    "test": "node test/state.test.js && node test/geometry.test.js && node test/text.test.js && node test/render.test.js && node test/signature.test.js && node test/conflicts.test.js && node test/save.test.js && node test/outline.test.js && node test/signed.test.js && node test/security.test.js && node test/share.test.js && node test/reduce.test.js && node test/insert.test.js && node test/print.test.js && node test/textbox.test.js && node test/ocr.test.js && node test/recents.test.js && node test/migrate.test.js && node test/engine.test.js && node test/sigverify.test.js",
+    "dist:win": "vite build && node build/helper/build.cjs --force && electron-builder --win",
+    "dist:mac": "vite build && electron-builder --mac",
+    "icons": "electron build/make-icons.cjs",
+    "qpdf:build": "node build/qpdf/run.cjs",
+    "helper": "node build/helper/build.cjs"
+  },
+  "dependencies": {
+    "@embedpdf/pdfium": "2.15.1",
+    "@fontsource-variable/inter": "5.3.0"
+  },
+  "devDependencies": {
+    "@expo-google-fonts/inter": "0.4.2",
+    "@expo-google-fonts/jetbrains-mono": "0.4.1",
+    "@expo-google-fonts/noto-serif": "0.4.2",
+    "@pdf-lib/fontkit": "1.1.1",
+    "@playwright/test": "1.64.1",
+    "@tailwindcss/vite": "4.3.3",
+    "@tesseract.js-data/cat": "1.0.0",
+    "@tesseract.js-data/eng": "1.0.0",
+    "@tesseract.js-data/spa": "1.0.0",
+    "@vitejs/plugin-react": "6.1.2",
+    "concurrently": "10.0.6",
+    "cross-env": "10.1.0",
+    "electron": "44.9.0",
+    "electron-builder": "26.17.0",
+    "harfbuzzjs": "1.6.3",
+    "jpeg-js": "0.4.4",
+    "lucide-react": "1.59.0",
+    "pdf-lib": "1.17.1",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "tailwindcss": "4.3.3",
+    "tesseract.js": "7.0.0",
+    "tesseract.js-core": "7.0.0",
+    "vite": "8.3.4",
+    "wait-on": "9.5.1"
+  },
+  "build": {
+    "appId": "com.diego.spiderpdf",
+    "productName": "SpiderPDF",
+    "files": [
+      "dist/**",
+      "electron/**",
+      "build/icon.ico",
+      "build/icon.png",
+      "!electron/helper/**"
+    ],
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "fileAssociations": [
+      {
+        "ext": "pdf",
+        "name": "Documento PDF",
+        "role": "Editor",
+        "mimeType": "application/pdf"
+      }
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.ico",
+      "extraResources": [
+        {
+          "from": "build/helper/SpiderPdfHelper.exe",
+          "to": "helper/SpiderPdfHelper.exe"
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "shortcutName": "SpiderPDF",
+      "uninstallDisplayName": "SpiderPDF"
+    },
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.productivity",
+      "icon": "build/icon.icns"
+    },
+    "linux": {
+      "icon": "build/icon.png"
+    }
+  }
+}

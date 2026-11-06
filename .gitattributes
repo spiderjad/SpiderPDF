@@ -1,0 +1,9 @@
+# Texto con saltos de línea LF en el repositorio (Windows y Mac ven lo mismo)
+* text=auto eol=lf
+
+# Binarios: nunca convertir
+*.pdf binary
+*.png binary
+*.jpg binary
+*.wasm binary
+*.zip binary

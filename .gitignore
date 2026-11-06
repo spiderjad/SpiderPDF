@@ -1,0 +1,28 @@
+# Dependencias y compilados
+node_modules/
+dist/
+release/
+
+# Salidas de las pruebas
+test/out/
+
+# Copias y paquetes sueltos
+*.zip
+
+# Registros
+*.log
+npm-debug.log*
+
+# Variables de entorno (nunca al repositorio)
+.env
+.env.*
+
+# Sistema operativo y editores
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+
+# Ayudante nativo: se compila al empaquetar (npm run helper)
+build/helper/SpiderPdfHelper.exe

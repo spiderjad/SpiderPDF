@@ -1,0 +1,62 @@
+[
+  {
+    "label": "Archivo",
+    "items": [
+      { "label": "Nuevo documento…", "cmd": "new", "accel": "CmdOrCtrl+N" },
+      { "label": "Abrir…", "cmd": "open", "accel": "CmdOrCtrl+O" },
+      { "label": "Abrir reciente", "submenu": "recents" },
+      { "label": "Añadir PDF…", "cmd": "add", "accel": "CmdOrCtrl+Shift+O" },
+      "-",
+      { "label": "Guardar", "cmd": "save", "accel": "CmdOrCtrl+S" },
+      { "label": "Guardar como…", "cmd": "saveAs", "accel": "CmdOrCtrl+Shift+S" },
+      { "label": "Extraer selección…", "cmd": "extract", "accel": "CmdOrCtrl+E" },
+      "-",
+      { "label": "Proteger con contraseña…", "cmd": "protect" },
+      { "label": "Quitar la contraseña", "cmd": "unprotect" },
+      { "label": "Desbloquear permisos…", "cmd": "unlock" },
+      "-",
+      { "label": "Imprimir…", "cmd": "print", "accel": "CmdOrCtrl+P" },
+      { "label": "Compartir…", "cmd": "share" },
+      { "label": "Reducir tamaño…", "cmd": "reduce" },
+      "-",
+      { "label": "Salir", "role": "quit", "mac": { "label": "Cerrar ventana", "role": "close" } }
+    ]
+  },
+  {
+    "label": "Editar",
+    "items": [
+      { "label": "Deshacer", "cmd": "undo", "accel": "CmdOrCtrl+Z" },
+      { "label": "Rehacer", "cmd": "redo", "accel": "Ctrl+Y", "mac": { "accel": "Cmd+Shift+Z" } },
+      "-",
+      { "label": "Copiar", "cmd": "copy", "accel": "CmdOrCtrl+C" },
+      { "label": "Buscar…", "cmd": "find", "accel": "CmdOrCtrl+F" },
+      { "label": "Duplicar", "cmd": "duplicate", "accel": "CmdOrCtrl+D" },
+      "-",
+      { "label": "Seleccionar todas las páginas", "cmd": "selectAll", "accel": "CmdOrCtrl+A" },
+      { "label": "Girar a la izquierda", "cmd": "rotateLeft", "accel": "CmdOrCtrl+L" },
+      { "label": "Girar a la derecha", "cmd": "rotateRight", "accel": "CmdOrCtrl+R" },
+      { "label": "Eliminar páginas", "cmd": "delete", "hint": "Supr" },
+      "-",
+      { "label": "Insertar página en blanco", "cmd": "insertBlank" },
+      { "label": "Insertar imagen como página…", "cmd": "insertImage" },
+      "-",
+      { "label": "Reconocer texto (OCR)…", "cmd": "ocr" },
+      "-",
+      { "label": "Preferencias…", "cmd": "prefs", "accel": "CmdOrCtrl+," }
+    ]
+  },
+  {
+    "label": "Ver",
+    "items": [
+      { "label": "Organizar páginas", "cmd": "organize", "accel": "CmdOrCtrl+1" },
+      { "label": "Leer", "cmd": "read", "accel": "CmdOrCtrl+2" },
+      "-",
+      { "label": "Acercar", "cmd": "zoomIn", "accel": "CmdOrCtrl+Plus" },
+      { "label": "Alejar", "cmd": "zoomOut", "accel": "CmdOrCtrl+-" },
+      { "label": "Ajustar al ancho", "cmd": "zoomFit", "accel": "CmdOrCtrl+0" },
+      { "sep": true, "dev": true },
+      { "label": "Herramientas de desarrollo", "role": "toggleDevTools", "accel": "CmdOrCtrl+Shift+I", "dev": true },
+      { "label": "Recargar", "role": "reload", "accel": "F5", "dev": true }
+    ]
+  }
+]
