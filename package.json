@@ -23,8 +23,7 @@
   },
   "dependencies": {
     "@embedpdf/pdfium": "2.15.1",
-    "@fontsource-variable/inter": "5.3.0",
-    "spider-ui": "github:spiderjad/spider-ui#0e6fa6e40ccf0ffe90aee4b2a9477b0d95afe5f9"
+    "@fontsource-variable/inter": "5.3.0"
   },
   "devDependencies": {
     "@expo-google-fonts/inter": "0.4.2",
@@ -49,6 +48,7 @@
     "pdf-lib": "1.17.1",
     "react": "19.3.1",
     "react-dom": "19.3.1",
+    "spider-ui": "github:spiderjad/spider-ui#0e6fa6e40ccf0ffe90aee4b2a9477b0d95afe5f9",
     "tailwindcss": "4.3.3",
     "tesseract.js": "7.0.0",
     "tesseract.js-core": "7.0.0",
@@ -78,7 +78,14 @@
       }
     ],
     "win": {
-      "target": "nsis",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
       "icon": "build/icon.ico",
       "extraResources": [
         {
@@ -93,7 +100,8 @@
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico",
       "shortcutName": "SpiderPDF",
-      "uninstallDisplayName": "SpiderPDF"
+      "uninstallDisplayName": "SpiderPDF",
+      "artifactName": "${productName} Setup ${version}.${ext}"
     },
     "mac": {
       "target": "dmg",
@@ -102,7 +110,14 @@
     },
     "linux": {
       "icon": "build/icon.png"
-    }
+    },
+    "electronLanguages": [
+      "es",
+      "es-419",
+      "ca",
+      "en-US",
+      "en-GB"
+    ]
   },
   "overrides": {
     "docx": {
