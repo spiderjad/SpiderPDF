@@ -1,0 +1,33 @@
+/*
+ * Cabecera (src/components/Toolbar.jsx). Prefijo hd-.
+ * Solo disposición: colores, radios, sombras y tipografía salen de spider-ui (v-toolbar, v-btn-*, v-segmented, v-menu).
+ */
+
+.hd-bar { flex-shrink: 0; gap: 2px; }
+.hd-save { height: 32px; margin-left: 6px; padding: 0 14px; }
+.hd-zoom { min-width: 56px; padding: 0 6px; justify-content: center; font-variant-numeric: tabular-nums; color: var(--sp-text-secondary); }
+
+/* Ventanas estrechas: los botones con texto se quedan en icono (en Leer antes: lleva también el zoom). */
+@media (max-width: 1180px) {
+  .hd-bar .hd-label { display: none; }
+  .hd-bar .v-btn-ghost { padding: 0 8px; }
+}
+@media (max-width: 1440px) {
+  .hd-bar--read .hd-label { display: none; }
+  .hd-bar--read .v-btn-ghost { padding: 0 8px; }
+}
+
+.hd-drop { position: relative; }
+.hd-chevron { transition: transform 150ms ease-out; }
+.hd-chevron--open { transform: rotate(180deg); }
+
+.hd-menu { position: absolute; top: calc(100% + 4px); left: 0; z-index: 50; width: 288px; }
+.hd-menu--right { left: auto; right: 0; }
+.hd-menu--wide { width: 320px; }
+.hd-menu-item { align-items: flex-start; padding: 8px 10px; }
+.hd-menu-item > svg:first-child { margin-top: 2px; }
+.hd-menu-title { font-weight: 500; }
+
+@media (prefers-reduced-motion: reduce) {
+  .hd-chevron { transition: none; }
+}

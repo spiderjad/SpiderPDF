@@ -1,13 +1,15 @@
 import { useId, useRef, useState } from 'react';
 import { CircleAlert, CircleCheck, Copy, FolderOpen, LoaderCircle, Mail, MessageCircle, Share2, Sparkles, TriangleAlert } from 'lucide-react';
 import { useModal } from './PasswordDialog.jsx';
+import { useT } from '../i18n/index.js';
 
+// label y hint son claves de traducción (se traducen al pintar).
 export const SHARE_TARGETS = [
-  { id: 'whatsapp', label: 'WhatsApp', hint: 'Copia y abre WhatsApp', icon: MessageCircle },
-  { id: 'ai', label: 'Enviar a IA', hint: 'Copia y abre {ai}', icon: Sparkles },
-  { id: 'mail', label: 'Correo', hint: 'Con el PDF adjunto', icon: Mail },
-  { id: 'copy', label: 'Copiar archivo', hint: 'Para pegarlo con Ctrl+V', icon: Copy },
-  { id: 'reveal', label: 'Mostrar en el Explorador', hint: 'La carpeta con el PDF', icon: FolderOpen },
+  { id: 'whatsapp', label: 'dialogs.share.whatsapp', hint: 'dialogs.share.whatsappHint', icon: MessageCircle },
+  { id: 'ai', label: 'dialogs.share.ai', hint: 'dialogs.share.aiHint', icon: Sparkles },
+  { id: 'mail', label: 'dialogs.share.mail', hint: 'dialogs.share.mailHint', icon: Mail },
+  { id: 'copy', label: 'dialogs.share.copy', hint: 'dialogs.share.copyHint', icon: Copy },
+  { id: 'reveal', label: 'dialogs.share.reveal', hint: 'dialogs.share.revealHint', icon: FolderOpen },
 ];
 
 /**
@@ -16,6 +18,7 @@ export const SHARE_TARGETS = [
  *   name: nombre propuesto; total / selected: páginas; notices: avisos (firma, redacción, contraseña) según las opciones.
  */
 export default function ShareDialog({ name: initialName, total, selected, notices, aiName = 'Claude', onShare, onClose }) {
+  const t = useT();
   const ref = useRef(null);
   const nameId = useId();
   const [name, setName] = useState(initialName);
@@ -35,7 +38,7 @@ export default function ShareDialog({ name: initialName, total, selected, notice
     try {
       setResult(await onShare(target, opts));
     } catch (e) {
-      setResult({ ok: false, text: `No se pudo compartir: ${e?.message ?? e}` });
+      setResult({ ok: false, text: t('dialogs.share.failed', { error: e?.message ?? e }) });
     } finally {
       setBusy(null);
     }
@@ -60,12 +63,12 @@ export default function ShareDialog({ name: initialName, total, selected, notice
       >
         <div className="flex items-center gap-3 border-b border-line px-5 py-3.5">
           <span className="grid size-8 place-items-center rounded-lg bg-accent-soft text-accent-ink" aria-hidden="true"><Share2 size={16} strokeWidth={1.75} /></span>
-          <h2 id="compartir-titulo" className="text-base font-semibold tracking-tight">Compartir</h2>
+          <h2 id="compartir-titulo" className="text-base font-semibold tracking-tight">{t('dialogs.share.title')}</h2>
         </div>
 
         <div className="space-y-4 overflow-y-auto px-5 py-5 text-sm">
           <div>
-            <label htmlFor={nameId} className="mb-1.5 block text-xs font-medium text-muted">Nombre del archivo</label>
+            <label htmlFor={nameId} className="mb-1.5 block text-xs font-medium text-muted">{t('dialogs.share.fileName')}</label>
             <input
               id={nameId}
               value={name}
@@ -76,17 +79,17 @@ export default function ShareDialog({ name: initialName, total, selected, notice
             />
           </div>
           <fieldset>
-            <legend className="mb-1.5 text-xs font-medium text-muted">Qué compartir</legend>
+            <legend className="mb-1.5 text-xs font-medium text-muted">{t('dialogs.share.what')}</legend>
             <div className="flex gap-2">
-              {radio('all', `Todo el documento (${total})`)}
-              {radio('selection', `Páginas seleccionadas (${selected})`, !selected)}
+              {radio('all', t('dialogs.common.wholeDoc', { n: total }))}
+              {radio('selection', t('dialogs.share.selection', { n: selected }), !selected)}
             </div>
           </fieldset>
           <label className="flex cursor-pointer items-start gap-2.5">
             <input type="checkbox" checked={hidden} onChange={() => setHidden((v) => !v)} className="mt-1 accent-[var(--accent)]" />
             <span>
-              <span className="block font-medium">Quitar información oculta</span>
-              <span className="block text-xs text-muted">Metadatos (autor, título…), notas, adjuntos y formularios interactivos. Lo que se ve en las páginas no cambia.</span>
+              <span className="block font-medium">{t('dialogs.share.hidden')}</span>
+              <span className="block text-xs text-muted">{t('dialogs.share.hiddenHint')}</span>
             </span>
           </label>
           {list.length > 0 && (
@@ -100,7 +103,7 @@ export default function ShareDialog({ name: initialName, total, selected, notice
             </ul>
           )}
 
-          <div role="group" aria-label="Destino" className="grid grid-cols-2 gap-2 [&>button:last-child:nth-child(odd)]:col-span-2">
+          <div role="group" aria-label={t('dialogs.share.target')} className="grid grid-cols-2 gap-2 [&>button:last-child:nth-child(odd)]:col-span-2">
             {SHARE_TARGETS.map(({ id, label, hint, icon: Icon }) => (
               <button
                 key={id}
@@ -113,15 +116,15 @@ export default function ShareDialog({ name: initialName, total, selected, notice
                   {busy === id ? <LoaderCircle size={18} strokeWidth={1.75} className="spin" /> : <Icon size={18} strokeWidth={1.75} />}
                 </span>
                 <span className="min-w-0">
-                  <span className="block font-medium">{label}</span>
-                  <span className="block truncate text-xs text-muted">{hint.replace('{ai}', aiName)}</span>
+                  <span className="block font-medium">{t(label)}</span>
+                  <span className="block truncate text-xs text-muted">{t(hint, { ai: aiName })}</span>
                 </span>
               </button>
             ))}
           </div>
 
           <p role="status" aria-live="polite" className="min-h-5">
-            {busy && <span className="text-muted">Preparando la copia…</span>}
+            {busy && <span className="text-muted">{t('dialogs.share.preparing')}</span>}
             {!busy && result && (
               <span className={`flex items-start gap-2 ${result.ok ? 'text-ink' : 'text-danger'}`}>
                 {result.ok
@@ -134,8 +137,8 @@ export default function ShareDialog({ name: initialName, total, selected, notice
         </div>
 
         <div className="flex items-center justify-between gap-2 border-t border-line px-5 py-3">
-          <span className="text-xs text-muted">La copia se borra al cerrar SpiderPDF.</span>
-          <button type="button" onClick={onClose} disabled={!!busy} className="h-9 rounded-lg px-3.5 text-sm font-medium transition-[background-color,scale] hover:bg-hover active:scale-[0.98] disabled:opacity-50">Cerrar</button>
+          <span className="text-xs text-muted">{t('dialogs.share.tempNote')}</span>
+          <button type="button" onClick={onClose} disabled={!!busy} className="h-9 rounded-lg px-3.5 text-sm font-medium transition-[background-color,scale] hover:bg-hover active:scale-[0.98] disabled:opacity-50">{t('dialogs.common.close')}</button>
         </div>
       </div>
     </div>

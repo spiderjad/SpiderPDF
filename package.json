@@ -14,7 +14,7 @@
     "test:e2e": "vite build && node build/helper/build.cjs && playwright test -c test/e2e/playwright.config.mjs",
     "build": "vite build",
     "start": "vite build && electron .",
-    "test": "node test/state.test.js && node test/geometry.test.js && node test/text.test.js && node test/render.test.js && node test/signature.test.js && node test/conflicts.test.js && node test/save.test.js && node test/outline.test.js && node test/signed.test.js && node test/security.test.js && node test/share.test.js && node test/reduce.test.js && node test/insert.test.js && node test/print.test.js && node test/textbox.test.js && node test/ocr.test.js && node test/recents.test.js && node test/migrate.test.js && node test/engine.test.js && node test/sigverify.test.js",
+    "test": "node test/i18n.test.js && node test/state.test.js && node test/geometry.test.js && node test/text.test.js && node test/render.test.js && node test/signature.test.js && node test/conflicts.test.js && node test/save.test.js && node test/outline.test.js && node test/toc.test.js && node test/tables.test.js && node test/docx.test.js && node test/signed.test.js && node test/security.test.js && node test/share.test.js && node test/reduce.test.js && node test/insert.test.js && node test/print.test.js && node test/textbox.test.js && node test/ocr.test.js && node test/recents.test.js && node test/migrate.test.js && node test/engine.test.js && node test/sigverify.test.js",
     "dist:win": "vite build && node build/helper/build.cjs --force && electron-builder --win",
     "dist:mac": "vite build && electron-builder --mac",
     "icons": "electron build/make-icons.cjs",
@@ -23,7 +23,8 @@
   },
   "dependencies": {
     "@embedpdf/pdfium": "2.15.1",
-    "@fontsource-variable/inter": "5.3.0"
+    "@fontsource-variable/inter": "5.3.0",
+    "spider-ui": "github:spiderjad/spider-ui#0e6fa6e40ccf0ffe90aee4b2a9477b0d95afe5f9"
   },
   "devDependencies": {
     "@expo-google-fonts/inter": "0.4.2",
@@ -38,8 +39,10 @@
     "@vitejs/plugin-react": "6.1.2",
     "concurrently": "10.0.6",
     "cross-env": "10.1.0",
+    "docx": "9.13.0",
     "electron": "44.9.0",
     "electron-builder": "26.17.0",
+    "exceljs": "4.4.0",
     "harfbuzzjs": "1.6.3",
     "jpeg-js": "0.4.4",
     "lucide-react": "1.59.0",
@@ -99,6 +102,11 @@
     },
     "linux": {
       "icon": "build/icon.png"
+    }
+  },
+  "overrides": {
+    "docx": {
+      "@types/node": "26.6.5"
     }
   }
 }

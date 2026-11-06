@@ -1,6 +1,10 @@
 // Menú de la app (Windows, Linux y navegador). El contenido sale de electron/menu.json,
 // el mismo archivo con el que macOS construye su menú nativo.
 import MENU from '../electron/menu.json' with { type: 'json' };
+import { t, getLang } from './i18n/index.js';
+
+/** Etiqueta de menu.json ({ es, en, ca }) en el idioma actual. */
+export const menuLabel = (label) => (typeof label === 'string' ? label : label?.[getLang()] ?? label?.es ?? '');
 
 const isMac = () => typeof navigator !== 'undefined' && /Mac/.test(navigator.platform);
 
@@ -9,11 +13,11 @@ const isMac = () => typeof navigator !== 'undefined' && /Mac/.test(navigator.pla
  * vacío, un aviso desactivado.
  */
 export function recentItems(recents = []) {
-  if (!recents.length) return [{ label: 'Sin archivos recientes', cmd: 'none' }];
+  if (!recents.length) return [{ label: t('menu.noRecents'), cmd: 'none' }];
   return [
     ...recents.map((r) => ({ label: r.name, cmd: 'openRecent', arg: r.path, title: r.path })),
     { sep: true },
-    { label: 'Borrar lista', cmd: 'clearRecents' },
+    { label: t('menu.clearRecents'), cmd: 'clearRecents' },
   ];
 }
 
@@ -27,22 +31,23 @@ export function menuModel({ dev = false, web = false, recents = [] } = {}) {
       .filter((it) => (it === '-' || !it.dev || dev) && !(web && it.role) && !(web && it.submenu === 'recents'))
       .map((it) => {
         if (it === '-' || it.sep) return { sep: true };
-        if (it.submenu === 'recents') return { label: it.label, items: recentItems(recents) };
-        return { ...it, ...(isMac() ? it.mac ?? {} : {}) };
+        if (it.submenu === 'recents') return { label: menuLabel(it.label), items: recentItems(recents) };
+        const merged = { ...it, ...(isMac() ? it.mac ?? {} : {}) };
+        return { ...merged, label: menuLabel(merged.label), hint: merged.hint && menuLabel(merged.hint) };
       });
     // Quitar separadores sobrantes (al principio, al final o repetidos).
     const clean = items.filter((it, i) => !it.sep || (i > 0 && i < items.length - 1 && !items[i - 1].sep));
-    return { label: menu.label, items: clean };
+    return { label: menuLabel(menu.label), items: clean };
   });
 }
 
-/** "CmdOrCtrl+Shift+O" → "Ctrl+Mayús+O" (o "⌘⇧O" en Mac). */
+/** "CmdOrCtrl+Shift+O" → "Ctrl+Mayús+O" ("Ctrl+Shift+O" en inglés; "⌘⇧O" en Mac). */
 export function formatAccel(accel) {
   if (!accel) return '';
   const mac = isMac();
   const names = mac
     ? { CmdOrCtrl: '⌘', Cmd: '⌘', Ctrl: '⌃', Shift: '⇧', Alt: '⌥', Plus: '+' }
-    : { CmdOrCtrl: 'Ctrl', Cmd: 'Ctrl', Ctrl: 'Ctrl', Shift: 'Mayús', Alt: 'Alt', Plus: '+' };
+    : { CmdOrCtrl: 'Ctrl', Cmd: 'Ctrl', Ctrl: 'Ctrl', Shift: t('key.shift'), Alt: 'Alt', Plus: '+' };
   const parts = splitAccel(accel).map((p) => names[p] ?? p.toUpperCase());
   return parts.join(mac ? '' : '+');
 }

@@ -10,15 +10,16 @@
 
 import { hasRedactions } from './savePlan.js';
 import { permsPolicy, permsNotice } from './security.js';
+import { t } from './i18n/index.js';
 
-/** Motivos por los que hay que reescribir el archivo, como se explican en el diálogo. */
+/** Motivos por los que hay que reescribir el archivo, como se explican en el diálogo (claves de i18n). */
 export const REWRITE_REASONS = {
-  added: 'has añadido páginas de otro PDF',
-  inserted: 'has insertado páginas nuevas',
-  deleted: 'has quitado páginas',
-  moved: 'has cambiado el orden de las páginas',
-  redact: 'hay zonas que redactar',
-  security: 'has cambiado la contraseña',
+  added: 'reader.signed.reasonAdded',
+  inserted: 'reader.signed.reasonInserted',
+  deleted: 'reader.signed.reasonDeleted',
+  moved: 'reader.signed.reasonMoved',
+  redact: 'reader.signed.reasonRedact',
+  security: 'reader.signed.reasonSecurity',
 };
 
 /**
@@ -39,20 +40,24 @@ export function incrementalPlan(pages, source, { security } = {}) {
 
 /** Une los motivos en una frase: «has quitado páginas y hay zonas que redactar». */
 export function reasonText(reasons) {
-  const list = reasons.map((r) => REWRITE_REASONS[r]).filter(Boolean);
-  return list.length > 1 ? `${list.slice(0, -1).join(', ')} y ${list.at(-1)}` : list[0] ?? '';
+  const list = reasons.map((r) => REWRITE_REASONS[r]).filter(Boolean).map((k) => t(k));
+  return list.length > 1 ? t('reader.common.listAnd', { list: list.slice(0, -1).join(', '), last: list.at(-1) }) : list[0] ?? '';
 }
 
 // --- Integridad (la comprueba el proceso principal: electron/sigverify.cjs) -----------------------
-/** Texto y tono de cada estado. La identidad del firmante (confianza, revocación) no se comprueba aún. */
+/**
+ * Tono y texto de cada estado (text: en el idioma actual, se traduce al leerlo). La identidad del firmante
+ * (confianza, revocación) no se comprueba aún.
+ */
+const status = (rank, tone, key) => ({ rank, tone, key, get text() { return t(key); } });
 export const SIG_STATUS = {
-  intact: { rank: 0, tone: 'neutral', text: 'Firma intacta. Identidad del firmante sin verificar.' },
-  modified: { rank: 1, tone: 'neutral', text: 'Firma intacta. Se añadieron cambios después de firmar.' },
-  unknown: { rank: 2, tone: 'warn', text: 'No se pudo comprobar la firma.' },
-  broken: { rank: 3, tone: 'danger', text: 'Firma rota: el documento se modificó después de firmar.' },
-  pending: { rank: -1, tone: 'neutral', text: 'Comprobando la firma…' },
-  unavailable: { rank: -1, tone: 'neutral', text: 'Firma digital sin comprobar: la comprobación solo está en la app de escritorio.' },
-  outdated: { rank: -1, tone: 'warn', text: 'No se pudo comprobar la firma: cierra la aplicación y vuelve a abrirla.' },
+  intact: status(0, 'neutral', 'reader.signed.intact'),
+  modified: status(1, 'neutral', 'reader.signed.modified'),
+  unknown: status(2, 'warn', 'reader.signed.unknown'),
+  broken: status(3, 'danger', 'reader.signed.broken'),
+  pending: status(-1, 'neutral', 'reader.signed.pending'),
+  unavailable: status(-1, 'neutral', 'reader.signed.unavailable'),
+  outdated: status(-1, 'warn', 'reader.signed.outdated'),
 };
 
 /** El peor estado de una lista de firmas ([{ status }]); el de la barra de estado. */
@@ -91,9 +96,9 @@ function mdpPolicy(sources) {
   if (!ps.length) return FULL;
   const p = Math.min(...ps);
   const base = { pages: false, content: false, print: true, copy: true };
-  if (p === 1) return { ...base, level: 'locked', annots: false, forms: false, notice: 'Este PDF está certificado y no admite cambios. Puedes leerlo, buscar y copiar texto.' };
-  if (p === 2) return { ...base, level: 'forms', annots: false, forms: true, notice: 'Este PDF está certificado: solo admite rellenar sus formularios.' };
-  return { ...base, level: 'annots', annots: true, forms: true, notice: 'Este PDF está certificado: solo admite rellenar formularios y anotar.' };
+  if (p === 1) return { ...base, level: 'locked', annots: false, forms: false, notice: t('reader.signed.mdpLocked') };
+  if (p === 2) return { ...base, level: 'forms', annots: false, forms: true, notice: t('reader.signed.mdpForms') };
+  return { ...base, level: 'annots', annots: true, forms: true, notice: t('reader.signed.mdpAnnots') };
 }
 
 /** Herramientas de Leer que permite la política (ids de AnnotToolbar). */
@@ -111,6 +116,7 @@ const annotKind = (type) => (type === 'image' || type === 'redact' || type === '
 export function allows(policy, a, state) {
   if (policy.level === 'full') return true;
   if (PAGE_ACTIONS.has(a.type)) return policy.pages;
+  if (a.type === 'setOutline') return policy.pages; // el índice es del documento, como el orden de las páginas
   if (a.type === 'setField') return policy.forms;
   if (a.type === 'setTextEdit' || a.type === 'setOcr') return policy.content; // la capa del OCR es texto de la página
   if (a.type === 'addAnnot') return policy[annotKind(a.annot.type)];

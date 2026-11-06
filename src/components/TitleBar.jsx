@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { ChevronRight } from 'lucide-react';
 import AppIcon from './AppIcon.jsx';
 import { formatAccel } from '../menu.js';
+import { useT } from '../i18n/index.js';
+import './TitleBar.css';
 
 /**
  * Barra de título de Windows y Linux: icono, menús (Archivo, Editar, Ver) y nombre del documento.
@@ -10,6 +12,7 @@ import { formatAccel } from '../menu.js';
  * flechas para moverse, Intro para elegir, Esc para salir.
  */
 export default function TitleBar({ model, title, dirty, isEnabled, onCommand }) {
+  const t = useT();
   const [open, setOpen] = useState(null);      // índice del menú abierto
   const [active, setActive] = useState(-1);    // elemento resaltado dentro del menú
   const barRef = useRef(null);
@@ -171,7 +174,7 @@ export default function TitleBar({ model, title, dirty, isEnabled, onCommand }) 
     >
       <AppIcon size={28} />
 
-      <div role="menubar" aria-label="Menú principal" className="no-drag ml-2 flex items-center gap-0.5">
+      <div role="menubar" aria-label={t('core.titlebar.menubar')} className="no-drag ml-2 flex items-center gap-0.5">
         {model.map((menu, m) => {
           const isOpen = open === m;
           return (
@@ -183,7 +186,7 @@ export default function TitleBar({ model, title, dirty, isEnabled, onCommand }) 
                 aria-haspopup="menu"
                 aria-expanded={isOpen}
                 tabIndex={m === 0 ? 0 : -1}
-                className={`h-7 rounded-md px-2.5 text-[13px] outline-none transition-colors ${kbd && !isOpen ? 'focus:outline-2 focus:outline-accent' : ''} ${isOpen ? 'bg-hover text-ink' : 'text-ink/85 hover:bg-hover hover:text-ink'}`}
+                className={`v-btn-ghost v-btn--sm tb-top outline-none ${kbd && !isOpen ? 'focus:outline-2 focus:outline-[var(--sp-focus)]' : ''}`}
                 onPointerDown={(e) => {
                   if (e.button !== 0) return;
                   e.preventDefault();
@@ -203,10 +206,10 @@ export default function TitleBar({ model, title, dirty, isEnabled, onCommand }) 
                 <div
                   role="menu"
                   aria-label={menu.label}
-                  className="motion-pop absolute left-0 top-[calc(100%+4px)] z-50 min-w-60 rounded-xl border border-line bg-panel p-1 shadow-pop"
+                  className="v-menu motion-pop absolute left-0 top-[calc(100%+4px)] z-50 min-w-60"
                 >
                   {menu.items.map((it, i) => (it.sep ? (
-                    <div key={`sep-${i}`} role="separator" className="mx-2 my-1 h-px bg-line" />
+                    <div key={`sep-${i}`} role="separator" className="v-menu__sep" />
                   ) : (
                     <div key={it.label} className="relative">
                       <MenuItem
@@ -224,10 +227,10 @@ export default function TitleBar({ model, title, dirty, isEnabled, onCommand }) 
                         <div
                           role="menu"
                           aria-label={it.label}
-                          className="motion-pop absolute left-full top-0 z-50 ml-1 min-w-64 max-w-[420px] rounded-xl border border-line bg-panel p-1 shadow-pop"
+                          className="v-menu motion-pop absolute left-full top-0 z-50 ml-1 min-w-64 max-w-[420px]"
                         >
                           {it.items.map((s, j) => (s.sep ? (
-                            <div key={`sep-${j}`} role="separator" className="mx-2 my-1 h-px bg-line" />
+                            <div key={`sep-${j}`} role="separator" className="v-menu__sep" />
                           ) : (
                             <MenuItem
                               key={`${s.label}-${j}`}
@@ -251,7 +254,7 @@ export default function TitleBar({ model, title, dirty, isEnabled, onCommand }) 
 
       <div className="titlebar-title flex min-w-0 flex-1 items-center justify-center gap-2 px-4 text-xs text-muted">
         <span className="truncate">{title ?? 'SpiderPDF'}</span>
-        {dirty && <span className="size-1.5 shrink-0 rounded-full bg-accent" aria-label="Cambios sin guardar" />}
+        {dirty && <span className="size-1.5 shrink-0 rounded-full bg-accent" aria-label={t('core.status.unsaved')} />}
       </div>
     </div>
   );
@@ -266,13 +269,14 @@ function MenuItem({ item, enabled, highlighted, expanded, onHover, onChoose }) {
       aria-haspopup={item.items ? 'menu' : undefined}
       aria-expanded={expanded}
       title={item.title}
-      className={`flex h-8 cursor-default items-center gap-6 rounded-lg px-2.5 text-sm ${enabled ? 'text-ink' : 'text-muted opacity-50'} ${highlighted ? 'bg-hover' : ''}`}
+      data-highlighted={highlighted || undefined}
+      className="v-menu__item tb-item"
       onPointerEnter={onHover}
       onPointerUp={(e) => { if (e.button === 0) onChoose(); }}
     >
-      <span className="min-w-0 flex-1 truncate whitespace-nowrap">{item.label}</span>
-      {shortcut && <span className="tabnum text-xs text-muted">{shortcut}</span>}
-      {item.items && <ChevronRight size={14} strokeWidth={1.75} className="-mr-1 text-muted" aria-hidden="true" />}
+      <span className="v-menu__label truncate whitespace-nowrap">{item.label}</span>
+      {shortcut && <span className="v-menu__hint">{shortcut}</span>}
+      {item.items && <ChevronRight size={14} strokeWidth={1.75} className="-mr-1" aria-hidden="true" />}
     </div>
   );
 }

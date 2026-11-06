@@ -10,6 +10,7 @@ import { createQpdf, finishWithQpdf } from './qpdf.js';
 import createQpdfModule from './qpdf/qpdf.mjs';
 import qpdfWasmUrl from './qpdf/qpdf.wasm?url';
 import { reducePdf } from './reduce.js';
+import { setLang, t } from '../i18n/index.js';
 
 /** JPEG con el codificador del navegador (rápido, nativo). quality: 0-1. */
 async function encodeJpeg(rgba, width, height, quality) {
@@ -64,7 +65,7 @@ function keepProtection({ user, owner, perms }) {
 }
 function takeProtection(token) {
   const p = protections.get(token);
-  if (!p) throw new Error('Vuelve a elegir la contraseña (Archivo → Proteger con contraseña…).');
+  if (!p) throw new Error(t('engine.protectionLost'));
   return p; // se conserva: cada «Guardar» vuelve a proteger con ella hasta cerrar el documento
 }
 
@@ -88,6 +89,10 @@ self.onmessage = async ({ data: { id, op, args } }) => {
     let transfer = [];
     switch (op) {
       case 'init':
+        result = true;
+        break;
+      case 'setLang': // los errores y avisos del motor salen en el idioma de la interfaz
+        setLang(args.lang, args.languages);
         result = true;
         break;
       case 'open': {
@@ -156,6 +161,31 @@ self.onmessage = async ({ data: { id, op, args } }) => {
       case 'search':
         result = core.searchPage(args.docId, args.index, args.query);
         break;
+      case 'rules':
+        result = core.rules(args.docId, args.index);
+        break;
+      case 'charStyles': {
+        result = core.charStyles(args.docId, args.index);
+        transfer = [result.size.buffer, result.flags.buffer, result.color.buffer, result.font.buffer];
+        break;
+      }
+      case 'pageImages': {
+        // Para Word: PNG si tiene transparencia, JPEG si no (fotos y escaneos pesan mucho menos).
+        const list = core.pageImages(args.docId, args.index);
+        result = [];
+        for (const im of list) {
+          const canvas = new OffscreenCanvas(im.width, im.height);
+          canvas.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(im.data.buffer), im.width, im.height), 0, 0);
+          const type = im.alpha ? 'png' : 'jpg';
+          const blob = await canvas.convertToBlob(im.alpha ? { type: 'image/png' } : { type: 'image/jpeg', quality: 0.9 });
+          result.push({ rect: im.rect, width: im.width, height: im.height, type, bytes: new Uint8Array(await blob.arrayBuffer()) });
+        }
+        transfer = result.map((r) => r.bytes.buffer);
+        break;
+      }
+      case 'links':
+        result = core.links(args.docId, args.index);
+        break;
       case 'bookmarks':
         result = core.bookmarks(args.docId);
         break;
@@ -173,7 +203,7 @@ self.onmessage = async ({ data: { id, op, args } }) => {
         // «Reducir tamaño»: el documento tal como está (compose, con su protección) → imágenes → qpdf.
         await prepareTextFonts(core, args.refs);
         const security = args.security?.token ? takeProtection(args.security.token) : args.security;
-        const raw = await finishWithQpdf(getQpdf, core.compose(args.refs, null, { security }), core.post);
+        const raw = await finishWithQpdf(getQpdf, core.compose(args.refs, null, { security, outline: args.outline }), core.post);
         core.post = null;
         const passwords = knownPasswords(core, { docIds: args.docIds, token: args.security?.token });
         const r = await reducePdf(core, raw, {
@@ -190,7 +220,7 @@ self.onmessage = async ({ data: { id, op, args } }) => {
       case 'compose': {
         await prepareTextFonts(core, args.refs);
         const security = args.security?.token ? takeProtection(args.security.token) : args.security;
-        const raw = core.compose(args.refs, progress(id), { security, hidden: !!args.hidden });
+        const raw = core.compose(args.refs, progress(id), { security, hidden: !!args.hidden, outline: args.outline });
         const bytes = await finishWithQpdf(getQpdf, raw, core.post);
         core.post = null;
         result = { bytes, warnings: core.warnings ?? [], incremental: !!core.incremental };

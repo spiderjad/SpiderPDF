@@ -3,7 +3,8 @@
 **SpiderPDF**: editor de PDF de escritorio (Windows y Mac) propio, **sin servicios externos**.
 (La carpeta del proyecto sigue llamándose `pdf-editor`; el producto, el paquete npm y todo lo visible es SpiderPDF.)
 El objetivo es poder venderlo cerrado, así que las licencias importan (ver abajo).
-Interfaz y mensajes en **español**. El autor es Diego (programador, Argentina, trabaja en España).
+Interfaz en **español, inglés y catalán** (ver «Idiomas»); el español es el original. El autor es Diego (programador,
+Argentina, trabaja en España).
 
 ## Comandos
 - `npm test`: pruebas del estado y del motor en Node. Ejecutar siempre tras tocar `src/engine` o `src/state.js`.
@@ -63,41 +64,59 @@ Interfaz y mensajes en **español**. El autor es Diego (programador, Argentina, 
 - Versiones de npm **fijadas exactas** y publicadas hace **más de 14 días** (seguridad de la cadena de suministro).
 - **Licencias:** nada AGPL/GPL en el producto (no MuPDF, no Ghostscript, no PyMuPDF/pdf2docx). Preferir MIT/Apache/BSD/MPL.
 - Electron: `contextIsolation: true`, `sandbox: true`, `nodeIntegration: false`. Nada de Node en el renderer.
-- Diseño: sigue el sistema de SpiderFolio (ver sección "Diseño" abajo). Sin mayúsculas en etiquetas.
-- Textos de la UI: frases cortas, voz activa, el botón dice lo que hace ("Guardar", "Extraer").
+- Diseño: **spider-ui** (skill `spider-ui`, guía en `node_modules/spider-ui/GUIDE.md`; ver «Diseño»). Sin mayúsculas en etiquetas.
+- Textos de la UI: frases cortas, voz activa, el botón dice lo que hace ("Guardar", "Extraer"). **Ningún texto
+  visible escrito a mano en el código:** siempre `t('clave')` con su traducción en es, en y ca (ver «Idiomas»).
 - Cada función nueva del motor lleva su prueba en `test/engine.test.js`.
 
 ## Diseño
-Mismo lenguaje visual que **SpiderFolio** (`C:\dev\SpiderFolio\public`, `docs/spec/diseno.md` §10), para que sean de la misma familia.
-SpiderFolio es AGPL: **no importar su preset ni copiar sus componentes**; solo se reproducen los valores, escritos aquí.
+Sistema de diseño **spider-ui**, el de todos los proyectos de Diego (repositorio privado `spiderjad/spider-ui`, instalado
+como `github:spiderjad/spider-ui#<commit>`, fijado al commit; importado una sola vez en `src/main.jsx`). Antes de tocar
+interfaz: leer `node_modules/spider-ui/GUIDE.md` (la skill `spider-ui` lo pide). Lo visual sale del paquete; aquí, solo
+disposición.
+- **Desde 1.1.0** (añadido para SpiderPDF): modo oscuro (`prefers-color-scheme`, o `data-theme`), tokens `--sp-canvas`,
+  `--sp-bg-muted`, `--sp-inverse`… y los componentes `v-btn-ghost`, `v-btn-icon`, `v-toolbar` (`--sub`), `v-segmented`,
+  `v-menu`, `v-dialog` y `v-kbd`. Lo que falte y se vaya a repetir en otros proyectos, se propone para el paquete
+  (no se inventa aquí). Para publicar un cambio: clonar, editar, comprobar `demo.html` en claro y oscuro (contraste AA),
+  subir `version`, push, y en SpiderPDF `npm install github:spiderjad/spider-ui#<commit nuevo>`.
+- **Pantallas nuevas o reescritas:** clases `v-*` y CSS propio por pantalla con prefijo y comentario (`hd-` cabecera
+  `Toolbar.css`, `tb-` barra de título, `at-` herramientas de Leer, `og-` Organizar, `cfg-` Preferencias). Colores
+  solo con `var(--sp-*)`. Modales nuevos: `<dialog class="v-app v-dialog">` con `showModal()` (como `PreferencesDialog`).
+- **El resto de la app** (diálogos antiguos con Tailwind): los nombres de siempre (`bg-panel`, `text-muted`, `bg-accent`,
+  `bg-desk`, `bg-inverse`…) apuntan a los tokens de spider-ui en `src/index.css`, así que ya tienen su aspecto y su modo
+  oscuro. Radios y sombras de Tailwind = los del paquete (6 / 10 px). Al tocarlos, pasarlos a `v-*`.
+- **Colores:** botón primario `v-btn-primary` (negro en claro, casi blanco en oscuro: `bg-inverse` en Tailwind); el
+  violeta `--sp-primary` (= `--accent`) solo para selección, estado, inserción y marcas («Cambios sin guardar»).
+  Foco: `--sp-focus`.
+- **Reglas propias:** las páginas son lo único blanco puro (`.paper`) sobre `--sp-canvas` (`--desk`), también en
+  oscuro; botones sobre la página siempre oscuros (`--overlay`); campos de formulario del PDF con colores fijos.
+- **Fuente:** Inter Variable (`@fontsource-variable/inter` 5.3.0, local); `--sp-font` la incluye desde 1.1.0.
+  **Iconos:** lucide `strokeWidth={1.75}`, 16 px. **Movimiento:** 150–200 ms, desactivado con `prefers-reduced-motion`.
+- **Cabecera** (`Toolbar.jsx`): archivo · vista (`v-segmented`) · deshacer · páginas · (zoom en Leer) · Exportar ▾,
+  Compartir, Guardar. En ventanas estrechas (y antes en Leer) los botones con texto quedan en icono.
+- **Organizar** (`OrganizeView.jsx`): fichas con casilla de selección (añade o quita sin perder lo demás), número en
+  pastilla, PDF de origen con su color, acciones sobre la miniatura, ficha final «Añadir PDF»; barra superior con
+  resumen, «Seleccionar todo / Quitar la selección» y tamaño de miniaturas (pequeñas, medianas, grandes; recordado en
+  `spiderpdf:organizar`). Teclado: flechas, Inicio/Fin, Espacio marca, Intro abre.
 
-Tokens (`src/index.css`, claro / oscuro según el sistema con `prefers-color-scheme`; clases Tailwind `bg-desk`, `text-muted`…):
-
-| Token | Claro | Oscuro | SpiderFolio | Uso |
-|---|---|---|---|---|
-| `--desk` | `#E9E9EC` | `#1D1D20` | (propio) / muted | Fondo de trabajo bajo las páginas |
-| `--panel` | `#FFFFFF` | `#0E0E11` | background | Barra de herramientas, estado, rail, toasts |
-| `--hover` | `#F4F4F5` | `#1D1D20` | muted | Hover de botones, fondo del conmutador de vista |
-| `--ink` | `#121216` | `#F5F5F5` | foreground | Texto |
-| `--muted` | `#6C6C75` | `#9F9FA8` | muted-foreground | Texto secundario e iconos sobre panel |
-| `--muted-desk` | `#63636C` | `#9F9FA8` | (propio) | Texto secundario **sobre el escritorio** (AA) |
-| `--line` | `#E7E7E9` | `#27272B` | border | Bordes de 1 px |
-| `--line-strong` | `#C4C4CA` | `#3A3A40` | (propio) | Borde discontinuo, barras de scroll |
-| `--accent` | `#7C3BED` | `#9D68F3` | primary | Único acento: primario, selección, foco, inserción |
-| `--on-accent` | `#FFFFFF` | `#0E0E11` | primary-foreground | Texto sobre el acento |
-| `--accent-soft` / `--accent-ink` | `#F5F0FF` / `#6022C3` | `#251839` / `#C19EFA` | primary-soft(-foreground) | Fondos tintados y su texto |
-| `--danger` / `-soft` / `-ink` | `#DC2828` / `#FEF1F1` / `#981B1B` | `#EF4343` / `#321515` / `#FCA6A6` | danger | Errores |
-| `--overlay` | `#121216` | igual | — | Botones sobre la página (siempre oscuros) |
-| `--paper-shadow` | | | (propio) | Sombra de papel de las páginas |
-
-- **Fuente:** Inter Variable (`@fontsource-variable/inter` 5.3.0, OFL, local; nada de Google Fonts por URL). Interfaz a 14 px / 22 px, secundario `text-xs` = 13 px. Pesos 400 / 500 (botones) / 600 (títulos).
-- **Radios:** `rounded-sm` 8, `md` 10, `lg` 12 (botones e ítems), `xl` 14 (toasts, menús), `2xl` 16 (tarjetas). Sombras `shadow-card` y `shadow-pop`.
-- **Iconos:** lucide con `strokeWidth={1.75}`, 16 px en botones.
-- **Botones:** `h-8` en barras, `h-9` sueltos; `rounded-lg text-sm font-medium`, `active:scale-[0.98]`, deshabilitado `opacity-50 pointer-events-none`.
-  Primario `bg-accent text-on-accent hover:bg-accent/90`; fantasma `hover:bg-hover`. Iconos secundarios en `text-muted`.
-- **Reglas propias que mandan sobre SpiderFolio:** páginas en blanco puro con `.paper` sobre `--desk`; selección = contorno de 2 px + número en pastilla `bg-accent`; marcador de inserción de 4 px en acento;
-  foco `outline 2px solid var(--accent)` (sólido, no al 40 %); contraste AA comprobado en claro y oscuro; textos en español y sin mayúsculas en etiquetas.
-- Movimiento: 150–200 ms ease-out, `.motion-pop` para toasts/menús, todo desactivado con `prefers-reduced-motion`.
+## Idiomas
+Español (original), inglés y catalán. **Todo texto visible pasa por `t()`** (`src/i18n/index.js`).
+- Idioma: Preferencias → Idioma (`prefs.lang`: `auto`, `es`, `en`, `ca`). En «Automático», el idioma **principal** del
+  sistema (`navigator.languages[0]`, que en Electron es el de Windows/macOS): catalán → ca, español → es, inglés o
+  cualquier otro → en. Se aplica antes de pintar (`main.jsx`) y al cambiarlo, sin reiniciar.
+- `t('area.componente.clave', { param })`; plurales `clave_one` / `clave_other` con `{ count }` (Intl.PluralRules);
+  `useT()` en componentes (repinta al cambiar). Nunca `t()` en el nivel superior de un módulo: en constantes, claves.
+  `formatNumber` y `getLocale()` para números y fechas de la interfaz.
+- Textos por área en `src/i18n/strings/*.js` (`core`: App, cabecera, herramientas, Organizar, Preferencias, menú;
+  `dialogs`, `export`, `reader`, `engine`), cada uno con `{ es, en, ca }`. Menús: etiquetas `{ es, en, ca }` en
+  `electron/menu.json`. Proceso principal (diálogos nativos, menú de macOS, firmas): `electron/strings.json` con
+  `T()` de `electron/i18n.cjs`; la ventana le manda el idioma con `app:setLang` (`DESKTOP_API` = 9) y al motor con
+  `pdf.setLang` (sus errores y avisos).
+- `test/i18n.test.js`: mismas claves y `{parámetros}` en los tres idiomas, sin claves repetidas entre áreas, menú y
+  `strings.json` completos. Las e2e corren en español (`launch(…, { lang: 'es-ES' })`, `--lang` de Chromium);
+  `test/e2e/idiomas.spec.mjs` prueba inglés, catalán, un idioma que no tenemos (→ inglés) y el cambio en Preferencias.
+- Estilo: es con tú; en sencillo y en minúsculas salvo la primera; ca central (Softcatalà), imperativo en botones
+  (Desa, Obre, Cancel·la). Comillas «» en es y ca, “ ” en en. Glosario: Redactar → Redact → **Censura**.
 
 ## Estado actual
 **Paso 1 (hecho y probado):** abrir, unir, reordenar arrastrando, girar, eliminar, extraer, deshacer, lectura con zoom.
@@ -496,11 +515,124 @@ Tokens (`src/index.css`, claro / oscuro según el sistema con `prefers-color-sch
   a píxel, foto a 150 ppp, PNG con transparencia intacto, protegido conserva la protección) y `test/e2e/reducir.spec.mjs`.
 - Límites: imágenes dentro de Form XObjects no se reducen; los JPEG ya por debajo de la resolución no se recomprimen.
 
+**Marcadores desde el índice impreso y enlaces (hecho, pendiente del visto bueno):**
+- `src/toc.js` (puro, `test/toc.test.js`): `textLines` (líneas por geometría: vuelve a unir el número que PDFium separa
+  del título), `parseTocLine` (título + relleno de puntos/hueco + número, también romanos), `tocEntries` (con relleno,
+  las líneas sin él solo cuentan entre la primera y la última que lo llevan: fuera cabecera «Página 3 de 16» y pie; sin
+  relleno, columna de números alineada a la derecha; números casi siempre crecientes; título partido en dos líneas se
+  une), niveles por numeración (2, 2.1, A.2) o por sangría, `guessOffset` (cada entrada vota por las páginas que
+  contienen su título, sin contar las del índice; en empate el desfase más cercano a 0), `findTocPages` (primera página
+  que lo parece entre las 15 primeras y las que la siguen), `treeFromLevels`/`levelsFromTree`.
+- Estado: `state.outline` = índice creado `[{ title, key, children }]` (key = página del estado, sigue a su página al
+  reordenar) o null (el de los PDF). Acción `setOutline`; el historial guarda `{ pages, outline }` por paso. En
+  `signed.js`, `setOutline` necesita `policy.pages` (no en certificados). `outline.js`: `mapCustomOutline`, `outlineForSave`.
+- Motor: `compose(refs, …, { outline })` → `writeOutline` sustituye el índice (EPDFBookmark_Clear + AppendChild, destino
+  «ajustar»); en un PDF firmado va en la revisión incremental y la firma sigue verificando (probado). Llega por
+  `pdf.compose`/`pdf.reduceJob` (`outline: state.outline`) en Guardar, Compartir y Reducir.
+- UI: pestaña Marcadores sin índice → busca la página de índice: «La página 3 parece un índice» + «Crear índice desde la
+  página 3» (y «Usar otra página» / «Crear índice desde una página…»). `TocDialog.jsx`: página del índice, «La página
+  impresa 1 es la N del PDF» (calculado; «Calculado: 11 de 12 títulos están en su página»), lista editable (título, nivel
+  con subir/bajar, página, quitar, «Añadir entrada»), valida páginas fuera de rango. Con índice creado: pie «Editar el índice».
+- Probado con el PDF real de Seidor (propuesta MTS, en OneDrive, no se copia al repo): página 3, 17 entradas, desfase 0.
+  Fixtures `indice-impreso.pdf` (`indiceImpreso()`, desfase +1, título partido, cabecera y pie numerados) y `enlaces.pdf`.
+- Enlaces: motor `links(docId, index)` → `[{ rect, pageIndex } | { rect, uri }]` (FPDFLink_Enumerate; /Dest o acción
+  GoTo, URI; se ignoran lanzar, JavaScript y otros archivos). `PageOverlay` (herramienta Seleccionar): clic sin arrastrar
+  sobre un enlace lo sigue (arrastrar desde él no), cursor de mano, y un botón invisible enfocable por enlace (teclado).
+  Internos → posición ACTUAL de su página (`ReaderView.followLink`); si se eliminó, aviso. Web/correo → confirmación
+  «¿Abrir el enlace?» y IPC `link:open` (solo http, https y mailto; hook e2e `__spiderPdfLinkHook`). `DESKTOP_API` = 6.
+- E2E: `test/e2e/indice-impreso.spec.mjs`.
+- Límites: el índice creado sustituye al de los PDF (al unir otro PDF después, su índice no se añade); los marcadores
+  llevan a la página entera (no a la altura del título); no crea enlaces clicables en las líneas del índice impreso.
+
+**Paso 6, tanda 1 — Exportar a Excel (hecho, pendiente del visto bueno):** Archivo → «Exportar a Excel…» (`cmd: exportExcel`,
+necesita `policy.copy`).
+- Motor: `rules(docId, index)` → segmentos rectos horizontales y verticales de los trazados de primer nivel (con
+  trazo, o rellenos finos = líneas dibujadas como rectángulo); los rellenos gruesos (fondo de celda) no cuentan.
+- `src/tables.js` (puro, `test/tables.test.js` con PDFium y ExcelJS de verdad): `words`, `lines`, `cellsOf` (hueco >
+  0,55 × alto de letra = otra columna); `grids` (líneas que se cruzan, ≥ 2 × 2 celdas) + `fillGrid` (palabras a su
+  celda por el centro; las líneas pegadas encima de la rejilla, dentro de su anchura, son su cabecera sin bordes, como
+  la azul de Seidor); tablas por alineación (`streamBlocks`: líneas seguidas con ≥ 2 trozos, columnas = huecos que nada
+  cruza en el cuerpo, ≥ 3 columnas para no tomar «clave valor» como tabla; continuación sin primera columna se une a la
+  fila anterior); `joinContinued` (última de una página + primera de la siguiente, mismas columnas y misma cabecera o
+  ninguna; la repetida se quita); `hasHeader`; `numberStyle` ('es'/'en' por mayoría); `parseCell` (1.234,56, %, €, $,
+  fechas d/m/a y a-m-d → Date UTC; códigos con ceros delante o letras quedan como texto); `displayCell` (vista previa).
+- `src/export/xlsx.js`: `buildXlsx(ExcelJS, tablas, { mode: 'table' | 'page' })` (una hoja por tabla o por página),
+  cabecera en negrita con fondo, fija y con filtro, anchos por contenido, formatos numéricos y de fecha.
+  `src/export/scan.js`: `scanTables(pages)` (pageChars con OCR + `pdf.rules`; tamaño sin girar).
+- ExcelJS 4.4.0 (MIT; jszip se usa como MIT; 139 dependencias, ninguna de menos de 14 días) se carga con `import()`
+  solo al exportar (trozo aparte de 930 KB, funciona con la CSP).
+- `ExcelDialog.jsx`: busca con progreso, lista de tablas (página, filas × columnas, cabecera; casilla para incluirla),
+  vista previa como en Excel, «Una por tabla / Una por página», «Unir las tablas que siguen en la página siguiente»;
+  «Exportar…» → IPC `export:save` (diálogo con filtro xlsx/docx, `writeAtomic`) y «Abrir en Excel» → `export:open`
+  (solo lo exportado en la sesión; hook e2e `__spiderPdfOpenPathHook`). `DESKTOP_API` = 7.
+- Fixtures `factura.pdf` (rejilla, `FACTURA`) y `albaran-lineas.pdf` (sin líneas, dos páginas, descripción partida,
+  `ALBARAN_LINEAS`). Probado también con la propuesta de Seidor (5 tablas; honorarios de la página 11 con su cabecera).
+  E2E `test/e2e/excel.spec.mjs`.
+- Límites: celdas combinadas se ven como celdas sueltas; tablas sin líneas de solo 2 columnas no se detectan; se exporta
+  el texto original del PDF (no los textos editados con «Editar texto»).
+- Al exportar, el diálogo se cierra y el aviso trae «Abrir en Excel» (avisos con botón: `notify(texto, tipo, { label, run })`,
+  duran 7 s). Antes se quedaba abierto con el estado «Exportado» y Diego lo vio como un fallo.
+
+**Paso 6, tanda 2 — Exportar a Word (hecho, pendiente del visto bueno):** botón «Exportar ▾» en la barra (Word arriba,
+Excel debajo, con iconos propios en `FileBadges.jsx`: hoja + pastilla azul «W» / verde «X», **no** los logotipos de
+Microsoft) y Archivo → «Exportar a Word…» (`cmd: exportWord`, necesita `policy.copy`). `DropMenu` en `Toolbar.jsx` sirve
+para «Insertar» y «Exportar».
+- Motor (`engine.test.js`): `charStyles(docId, index)` → por carácter de textChars: tamaño (de la matriz del objeto:
+  `FPDFText_GetFontSize` da 327 pt en PDFs de Chrome), negrita/cursiva, color y fuente. `fontInfo` lee negrita y cursiva
+  del **propio archivo de la fuente** (`src/engine/fontTraits.js`: OS/2 usWeightClass, fsSelection y nombre completo),
+  porque muchos PDF llaman a sus fuentes «CIDFont+F1» y `FPDFFont_GetWeight` devuelve miles; nombres genéricos → familia
+  (`FPDFFont_GetFamilyName`). `pageImages(docId, index)` → imágenes de primer nivel con su caja, a ≤ 200 ppp; con
+  transparencia se dibujan con su máscara a su resolución propia (se agranda la matriz un momento para
+  `GetRenderedBitmap`). `readBitmap` común con `imageRGBA`. El worker las codifica (PNG con alfa, JPEG 0,9 sin).
+  PDFium marca con `\u0002` la palabra partida con guion al final de línea.
+- `src/export/docLayout.js` (puro, `test/docx.test.js`): `styledWords` (trozos de estilo; viñetas de Symbol/Wingdings
+  U+F0xx → «•»), `analyzePage` (líneas sin las de las tablas, tablas e imágenes en orden vertical; la imagen de página
+  entera con texto encima = escaneo con OCR: fuera), `layoutDocument`: cuerpo = tamaño con más letras; título = la letra
+  más grande si sale ≤ 2 veces en la 1.ª página; Título 1-3 por tamaño (≥ 1,15 × cuerpo); línea corta toda en negrita =
+  título débil; listas (viñeta o «1.», «a)», «iv.»; continuación alineada con el texto del elemento); párrafo nuevo con más
+  espacio del normal (1,3 × el interlineado), más sangría o línea anterior acabada en punto antes del margen; líneas con
+  huecos («clave … valor») sueltas con tabuladores (`tabStops`: a la derecha si el trozo acaba en el margen); sangría;
+  centrado. `splitRunning`: líneas repetidas arriba/abajo (12 %) en ≥ la mitad de las páginas → encabezado/pie de Word
+  (`pageNumber` si el número cambia → campos PAGE y NUMPAGES); imágenes repetidas en el mismo sitio (membrete, logos) fuera,
+  salvo las de página entera (escaneos). Texto casi blanco (sobre una franja de color) → color normal.
+- `src/export/docx.js`: `buildDocx(docx, layout, { images, pageBreaks })` con estilos de verdad (Title, Heading1-3 con el
+  tamaño del PDF, numeración y viñetas de Word, una numeración por lista), fuente del cuerpo (`wordFont`: Helvetica →
+  Arial, Times → Times New Roman, «CIDFont» → familia), tamaño de página y márgenes del PDF, tablas (cabecera con fondo y
+  repetida, anchos por contenido, números a la derecha), imágenes a su tamaño, salto de página por página del PDF
+  (opcional). `src/export/scanDoc.js`: `scanDocument(pages)` (pageChars con OCR + charStyles + rules + pageImages; las
+  páginas insertadas desde imagen llevan su imagen).
+- `WordDialog.jsx`: lee con progreso, «Contenido encontrado» (títulos, párrafos, listas, tablas, imágenes), opciones
+  (cada página del PDF en una nueva; incluir imágenes), vista previa en una hoja (encabezado y pie en gris); si hay páginas
+  escaneadas sin texto, «Reconocer el texto primero» → diálogo de OCR → al terminar vuelve a Exportar a Word (`afterOcr`).
+  Guardar por `export:save` (`kind: 'docx'`), aviso con «Abrir en Word».
+- docx 9.13.0 (MIT; jszip, nanoid, hash.js) con `overrides` `@types/node` 26.6.5 (la 26.6.6 tenía 9 días). Trozo aparte
+  de 452 KB con `import()`. ExcelJS y docx pasan a `devDependencies` (van dentro del bundle de Vite; así no se empaqueta
+  su `node_modules`).
+- Fixture `informe.pdf` (`informe()`, `INFORME`). Probado con la propuesta de Seidor (16 páginas: encabezado y pie de
+  Word con «Página N de M», honorarios como tabla, títulos, logotipos de cada página quitados) y el RFP de Collell (Calibri
+  y Calibri Bold reconocidas aunque se llamen «CIDFont+F1/F2», viñetas). E2E `test/e2e/word.spec.mjs` (también el camino OCR).
+- Límites: una sola columna de texto (dos columnas se mezclan por línea); cuadros de texto, columnas de periódico y
+  texto girado salen como párrafos normales; las celdas de las tablas sin negritas; tamaño de página del documento = el
+  de la primera página; títulos sobre una franja de color sin la franja; dibujos vectoriales (gráficos) no se exportan.
+
+**Preferencias (hecho, pendiente del visto bueno):** Editar → Preferencias… (Ctrl+,; `PreferencesDialog.jsx`).
+- `src/prefs.js` (`spiderpdf:prefs`, probado en `test/share.test.js`): `lang` (ver «Idiomas»), `ai`, `userName`
+  (≤ 80, sin caracteres de control; autor de lo exportado a Word y Excel), `outputDir` ('' = la carpeta del original)
+  y `quality` (clave de `REDUCE_LEVELS`, el nivel con el que se abre «Reducir tamaño»). `outputFolder(prefs, carpetaOriginal)`.
+- La carpeta de salida se usa en Guardar como, Extraer y las copias (`planSave({ outDir })`, probado en
+  `test/save.test.js`), Reducir tamaño y Exportar. Guardar sobre el archivo abierto no cambia de carpeta.
+- Elegir la carpeta: IPC `dialog:chooseFolder` → `desktop.chooseFolder` (en el navegador no existe: «Elegir…»
+  desactivado). La ruta queda en un campo de solo lectura, con «Quitar».
+- Nombre demasiado largo: `aria-invalid`, `v-error` y Guardar desactivado. Al abrir, el foco va al nombre.
+- Hecha con spider-ui: `v-dialog` (`<dialog>` nativo con `showModal()`), `v-field`, `v-input`, `v-btn-*`; disposición
+  en `PreferencesDialog.css` (prefijo `cfg-`). No se importa `spider-ui/tailwind-v4.css`: cambiaría `--font-sans` de
+  toda la app. E2E `test/e2e/preferencias.spec.mjs` e `idiomas.spec.mjs`.
+
 ## Hoja de ruta
 4. Hecho: OCR, Compartir, Contraseñas y Reducir tamaño (ver arriba). Falta que Diego pruebe las contraseñas en Edge
    y Acrobat con `test/out/contrasenas/` y que los reducidos se ven bien.
 5. Firma con certificado: **aplazada** (propuesta aprobada con sus ajustes, ver «Paso 5» abajo).
-6. Conversiones: primero a Excel (detección de tablas + ExcelJS), luego a Word (docx).
+6. Conversiones: Excel y Word hechos (ver «Paso 6, tandas 1 y 2»), pendientes del visto bueno de Diego.
 Después: auto-actualización (electron-updater), firma de código (Authenticode y notarización de Apple).
 
 **Paso 5 — APLAZADO por decisión de Diego; decisiones ya aprobadas para cuando se retome:** ayudante nativo en C# (`csc.exe` de .NET Framework 4.8, que trae
@@ -518,8 +650,3 @@ documento»: resumir, responder preguntas («¿importe total?», «¿fecha de ve
 extraer datos de facturas y albaranes a una tabla o CSV. Proveedor configurable: Claude u OpenAI con la clave API del
 usuario, o un modelo local (Ollama) para que nada salga del equipo. Antes de enviar nada fuera, avisar qué se envía. Las
 claves en el almacén seguro del sistema (`safeStorage`/Credential Manager/Llavero), nunca en archivos.
-
-Idea pendiente — índice desde una página de índice impresa: si el PDF no tiene índice interno pero sí una página de índice
-(título, puntos de relleno, número), ofrecer en Marcadores «Crear índice desde la página N»: detectar las entradas con la
-extracción de texto, jerarquía por numeración (2, 2.1…) o sangría, ajustar el desfase entre el número impreso y la página
-real, vista previa editable y, al aceptar, crear los marcadores y, opcionalmente, enlaces clicables en esas líneas.

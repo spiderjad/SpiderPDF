@@ -1,15 +1,16 @@
 // Impresión: papel, intervalo de páginas y colocación de cada página en la hoja. Puro (lo usan la vista
 // previa del diálogo y el proceso principal, que monta las hojas con estos mismos números); probado en
 // test/print.test.js. Medidas en puntos (1/72").
+import { t } from './i18n/index.js';
 
 const MM = 72 / 25.4;
 
 /** Papeles (en vertical). electron: valor de pageSize para webContents.print(). */
 export const PAPERS = {
   A4: { label: 'A4', w: 210 * MM, h: 297 * MM, electron: 'A4' },
-  Letter: { label: 'Carta', w: 612, h: 792, electron: 'Letter' },
+  Letter: { get label() { return t('dialogs.paper.letter'); }, w: 612, h: 792, electron: 'Letter' },
   A3: { label: 'A3', w: 297 * MM, h: 420 * MM, electron: 'A3' },
-  Legal: { label: 'Legal', w: 612, h: 1008, electron: 'Legal' },
+  Legal: { get label() { return t('dialogs.paper.legal'); }, w: 612, h: 1008, electron: 'Legal' },
 };
 
 /** Margen al «Ajustar a la página»: las impresoras no llegan al borde del papel. */
@@ -21,7 +22,7 @@ export const FIT_MARGIN = 5 * MM;
  */
 export function parseRange(text, total) {
   const parts = String(text ?? '').split(/[,;]/).map((s) => s.trim()).filter(Boolean);
-  if (!parts.length) return { error: 'Escribe las páginas, por ejemplo 1-3, 5.' };
+  if (!parts.length) return { error: t('dialogs.print.rangeEmpty') };
   const out = new Set();
   for (const part of parts) {
     let a;
@@ -33,10 +34,10 @@ export function parseRange(text, total) {
       a = m[1] ? Number(m[1]) : 1; // «-3»: desde la primera
       b = m[2] ? Number(m[2]) : total; // «7-»: hasta la última
     } else {
-      return { error: `«${part}» no es una página ni un intervalo.` };
+      return { error: t('dialogs.print.rangeInvalid', { part }) };
     }
-    if (a < 1 || b < 1 || a > total || b > total) return { error: `El documento tiene ${total} ${total === 1 ? 'página' : 'páginas'}.` };
-    if (a > b) return { error: `«${part}»: el intervalo va al revés.` };
+    if (a < 1 || b < 1 || a > total || b > total) return { error: t('dialogs.print.rangeOut', { count: total }) };
+    if (a > b) return { error: t('dialogs.print.rangeReversed', { part }) };
     for (let i = a; i <= b; i++) out.add(i - 1);
   }
   return { pages: [...out].sort((x, y) => x - y) };

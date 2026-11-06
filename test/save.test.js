@@ -114,4 +114,14 @@ t('barra de estado: los PDF firmados que aún aportan páginas', () => {
   assert.deepEqual(signedSources(doc(WIN, [page()])), []);
 });
 
+t('con carpeta de salida (Preferencias), Guardar como, Extraer y la copia se proponen en ella; Guardar sigue escribiendo en el original', () => {
+  const out = 'D:\\Salida PDF';
+  const asNew = planSave({ ...doc(WIN, [page()]), asNew: true, outDir: out });
+  assert.equal(asNew.defaultPath, 'D:\\Salida PDF\\contrato.pdf');
+  assert.equal(planSave({ ...doc(WIN, [page()]), extract: true, outDir: out }).defaultPath, 'D:\\Salida PDF\\contrato (extracto).pdf');
+  assert.equal(asNew.copyPath, 'D:\\Salida PDF\\contrato (modificado).pdf');
+  assert.equal(planSave({ ...doc(WIN, [page()]), outDir: out }).path, WIN, 'Guardar: el mismo archivo, no otra carpeta');
+  assert.equal(planSave({ ...doc(WIN, [page()]), asNew: true, outDir: '' }).defaultPath, WIN, 'sin carpeta: la del original');
+});
+
 console.log(`\n${passed} pruebas de guardado superadas.`);

@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Printer, SlidersHorizontal } from 'lucide-react';
 import { desktop } from '../desktop.js';
 import PageImage, { displaySize } from './PageImage.jsx';
 import { AnnotPreview } from './AnnotShapes.jsx';
 import { PAPERS, resolvePages, sheetLayout, sheetCount, supportsDuplex, needsSystemDialog } from '../printLayout.js';
+import { useT } from '../i18n/index.js';
 
 const STORE = 'spiderpdf:imprimir';
 const PREVIEW_W = 360; // px de ancho del papel en la vista previa
@@ -23,6 +24,7 @@ function savePrefs(o) {
  * («Configuración avanzada»). Recuerda la última impresora y las preferencias.
  */
 export default function PrintDialog({ state, onCancel, onPrint }) {
+  const t = useT();
   const ref = useRef(null);
   const [o, setO] = useState(() => {
     const p = loadPrefs();
@@ -93,11 +95,12 @@ export default function PrintDialog({ state, onCancel, onPrint }) {
     onPrint(settings(system || viaSystem));
   };
 
-  const count = useMemo(() => {
+  // Sin useMemo: así se vuelve a traducir al cambiar de idioma (la cuenta es trivial).
+  const count = (() => {
     const n = total;
     const s = sheetCount(n, copies, duplex);
-    return `${n} ${n === 1 ? 'página' : 'páginas'} · ${s} ${s === 1 ? 'hoja' : 'hojas'}${copies > 1 ? ` (${copies} copias)` : ''}`;
-  }, [total, copies, duplex]);
+    return `${t('dialogs.print.pages', { count: n })} · ${t('dialogs.print.sheets', { count: s })}${copies > 1 ? ` (${t('dialogs.print.copiesN', { count: copies })})` : ''}`;
+  })();
 
   const curIndex = state.current + 1;
   const radio = (value, label, disabled = false) => (
@@ -114,29 +117,29 @@ export default function PrintDialog({ state, onCancel, onPrint }) {
         ref={ref}
         role="dialog"
         aria-modal="true"
-        aria-label="Imprimir"
+        aria-label={t('dialogs.print.title')}
         className="motion-pop relative flex max-h-full w-[920px] max-w-full flex-col overflow-hidden rounded-2xl border border-line bg-panel shadow-pop"
       >
         <div className="flex items-center gap-3 border-b border-line px-5 py-3.5">
           <span className="grid size-8 place-items-center rounded-lg bg-accent-soft text-accent-ink" aria-hidden="true"><Printer size={16} strokeWidth={1.75} /></span>
-          <h2 className="text-base font-semibold tracking-tight">Imprimir</h2>
+          <h2 className="text-base font-semibold tracking-tight">{t('dialogs.print.title')}</h2>
         </div>
 
         <div className="flex min-h-0 flex-1">
           {/* Vista previa */}
-          <section aria-label="Vista previa" className="flex w-[440px] shrink-0 flex-col items-center gap-3 overflow-hidden bg-desk px-6 py-5">
+          <section aria-label={t('dialogs.common.preview')} className="flex w-[440px] shrink-0 flex-col items-center gap-3 overflow-hidden bg-desk px-6 py-5">
             <Sheet page={pages[at]} paper={paper} fit={o.fit} autoRotate={o.autoRotate} gray={!o.color} />
             <div className="flex items-center gap-2 text-sm">
-              <NavButton label="Hoja anterior" disabled={at <= 0} onClick={() => setSheet(at - 1)}><ChevronLeft size={16} strokeWidth={1.75} /></NavButton>
-              <span className="tabnum min-w-28 text-center text-muted-desk" aria-live="polite">{total ? `Hoja ${at + 1} de ${total}` : 'Sin páginas'}</span>
-              <NavButton label="Hoja siguiente" disabled={at >= total - 1} onClick={() => setSheet(at + 1)}><ChevronRight size={16} strokeWidth={1.75} /></NavButton>
+              <NavButton label={t('dialogs.print.prevSheet')} disabled={at <= 0} onClick={() => setSheet(at - 1)}><ChevronLeft size={16} strokeWidth={1.75} /></NavButton>
+              <span className="tabnum min-w-28 text-center text-muted-desk" aria-live="polite">{total ? t('dialogs.print.sheetOf', { n: at + 1, total }) : t('dialogs.print.noPages')}</span>
+              <NavButton label={t('dialogs.print.nextSheet')} disabled={at >= total - 1} onClick={() => setSheet(at + 1)}><ChevronRight size={16} strokeWidth={1.75} /></NavButton>
             </div>
             <p className="tabnum text-xs text-muted-desk">{count}</p>
           </section>
 
           {/* Opciones */}
           <div className="min-w-0 flex-1 space-y-4 overflow-y-auto px-5 py-4 text-sm">
-            <Field label="Impresora" htmlFor="imp-impresora">
+            <Field label={t('dialogs.print.printer')} htmlFor="imp-impresora">
               <select
                 id="imp-impresora"
                 data-autofocus
@@ -145,18 +148,18 @@ export default function PrintDialog({ state, onCancel, onPrint }) {
                 onChange={(e) => set({ printer: e.target.value })}
                 className="h-9 w-full rounded-lg border border-line bg-panel px-2.5 disabled:opacity-60"
               >
-                {printers === null && <option value="">Buscando impresoras…</option>}
-                {printers?.length === 0 && <option value="">{desktop.platform === 'web' ? 'La elige el navegador' : 'No hay impresoras instaladas'}</option>}
-                {printers?.map((p) => <option key={p.name} value={p.name}>{p.displayName}{p.isDefault ? ' (predeterminada)' : ''}</option>)}
+                {printers === null && <option value="">{t('dialogs.print.searching')}</option>}
+                {printers?.length === 0 && <option value="">{desktop.platform === 'web' ? t('dialogs.print.browserChooses') : t('dialogs.print.noPrinters')}</option>}
+                {printers?.map((p) => <option key={p.name} value={p.name}>{p.isDefault ? t('dialogs.print.defaultPrinter', { name: p.displayName }) : p.displayName}</option>)}
               </select>
-              {viaSystem && <p className="mt-1.5 text-xs text-muted">Esta impresora pregunta dónde guardar el archivo: al imprimir se abrirá el diálogo de Windows.</p>}
+              {viaSystem && <p className="mt-1.5 text-xs text-muted">{t('dialogs.print.viaSystem')}</p>}
             </Field>
 
             <div className="grid grid-cols-2 gap-4">
-              <Field label="Copias" htmlFor="imp-copias">
+              <Field label={t('dialogs.print.copies')} htmlFor="imp-copias">
                 <input id="imp-copias" type="number" min={1} max={999} value={o.copies} onChange={(e) => set({ copies: e.target.value })} className="tabnum h-9 w-full rounded-lg border border-line bg-panel px-2.5" />
               </Field>
-              <Field label="Papel" htmlFor="imp-papel">
+              <Field label={t('dialogs.print.paper')} htmlFor="imp-papel">
                 <select id="imp-papel" value={o.paper} onChange={(e) => set({ paper: e.target.value })} className="h-9 w-full rounded-lg border border-line bg-panel px-2.5">
                   {Object.entries(PAPERS).map(([k, p]) => <option key={k} value={k}>{p.label}</option>)}
                 </select>
@@ -164,14 +167,14 @@ export default function PrintDialog({ state, onCancel, onPrint }) {
             </div>
 
             <fieldset className="space-y-1.5">
-              <legend className="mb-1.5 text-xs font-medium text-muted">Páginas</legend>
-              {radio('all', `Todas (${state.pages.length})`)}
-              {radio('current', `Página actual (${curIndex})`, state.mode !== 'read')}
-              {radio('selection', `Selección (${state.selected.size})`, !state.selected.size)}
+              <legend className="mb-1.5 text-xs font-medium text-muted">{t('dialogs.common.pages')}</legend>
+              {radio('all', t('dialogs.print.all', { n: state.pages.length }))}
+              {radio('current', t('dialogs.print.current', { n: curIndex }), state.mode !== 'read')}
+              {radio('selection', t('dialogs.print.selection', { n: state.selected.size }), !state.selected.size)}
               <div className="flex items-center gap-2">
-                {radio('custom', 'Páginas')}
+                {radio('custom', t('dialogs.common.pages'))}
                 <input
-                  aria-label="Intervalo de páginas"
+                  aria-label={t('dialogs.print.range')}
                   placeholder="1-3, 5"
                   value={o.custom}
                   onFocus={() => set({ range: 'custom' })}
@@ -184,31 +187,31 @@ export default function PrintDialog({ state, onCancel, onPrint }) {
             </fieldset>
 
             <div className="space-y-4">
-              <Field label="Color">
-                <Segmented value={o.color ? 'color' : 'bn'} onChange={(v) => set({ color: v === 'color' })} options={[['color', 'Color'], ['bn', 'Blanco y negro']]} label="Color" />
+              <Field label={t('dialogs.print.color')}>
+                <Segmented value={o.color ? 'color' : 'bn'} onChange={(v) => set({ color: v === 'color' })} options={[['color', t('dialogs.print.color')], ['bn', t('dialogs.print.gray')]]} label={t('dialogs.print.color')} />
               </Field>
-              <Field label="Caras" htmlFor="imp-caras">
+              <Field label={t('dialogs.print.sides')} htmlFor="imp-caras">
                 <select
                   id="imp-caras"
                   value={duplex}
                   disabled={!duplexOk}
-                  title={duplexOk ? undefined : 'Esta impresora no imprime a doble cara.'}
+                  title={duplexOk ? undefined : t('dialogs.print.noDuplex')}
                   onChange={(e) => set({ duplex: e.target.value })}
                   className="h-9 w-full rounded-lg border border-line bg-panel px-2.5 disabled:opacity-60"
                 >
-                  <option value="simplex">Una cara</option>
-                  <option value="longEdge">Doble cara (borde largo)</option>
-                  <option value="shortEdge">Doble cara (borde corto)</option>
+                  <option value="simplex">{t('dialogs.print.simplex')}</option>
+                  <option value="longEdge">{t('dialogs.print.longEdge')}</option>
+                  <option value="shortEdge">{t('dialogs.print.shortEdge')}</option>
                 </select>
               </Field>
             </div>
 
             <fieldset className="space-y-1.5">
-              <legend className="mb-1.5 text-xs font-medium text-muted">Tamaño</legend>
-              <Segmented value={o.fit} onChange={(v) => set({ fit: v })} options={[['fit', 'Ajustar a la página'], ['actual', 'Tamaño real']]} label="Tamaño" />
+              <legend className="mb-1.5 text-xs font-medium text-muted">{t('dialogs.common.size')}</legend>
+              <Segmented value={o.fit} onChange={(v) => set({ fit: v })} options={[['fit', t('dialogs.print.fit')], ['actual', t('dialogs.print.actual')]]} label={t('dialogs.common.size')} />
               <label className="mt-2 flex items-start gap-2">
                 <input type="checkbox" checked={o.autoRotate} onChange={(e) => set({ autoRotate: e.target.checked })} className="mt-1 accent-[var(--accent)]" />
-                <span>Girar las páginas apaisadas para aprovechar el papel</span>
+                <span>{t('dialogs.print.autoRotate')}</span>
               </label>
             </fieldset>
           </div>
@@ -222,16 +225,16 @@ export default function PrintDialog({ state, onCancel, onPrint }) {
             className="mr-auto flex h-9 items-center gap-2 rounded-lg px-2.5 text-sm font-medium text-accent-ink transition-colors hover:bg-accent-soft disabled:pointer-events-none disabled:opacity-50"
           >
             <SlidersHorizontal size={16} strokeWidth={1.75} />
-            Configuración avanzada de la impresora…
+            {t('dialogs.print.advanced')}
           </button>
-          <button type="button" onClick={onCancel} className="h-9 rounded-lg px-3.5 text-sm font-medium transition-[background-color,scale] hover:bg-hover active:scale-[0.98]">Cancelar</button>
+          <button type="button" onClick={onCancel} className="h-9 rounded-lg px-3.5 text-sm font-medium transition-[background-color,scale] hover:bg-hover active:scale-[0.98]">{t('dialogs.common.cancel')}</button>
           <button
             type="button"
             onClick={() => submit(false)}
             disabled={!canPrint}
-            className="h-9 rounded-lg bg-accent px-4 text-sm font-medium text-on-accent transition-[background-color,scale] hover:bg-accent/90 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
+            className="h-9 rounded-lg bg-inverse px-4 text-sm font-medium text-on-inverse transition-[background-color,scale] hover:bg-inverse-hover active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
           >
-            Imprimir
+            {t('dialogs.print.title')}
           </button>
         </div>
       </div>

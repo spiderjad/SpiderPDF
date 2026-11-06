@@ -1,6 +1,8 @@
 // Elementos del usuario que quedan encima de una zona a redactar (sin DOM; se prueba en Node).
 // Al guardar, la redacción va la última y los borra: la interfaz avisa antes.
 
+import { t } from './i18n/index.js';
+
 export const NOTE_PT = 20; // lado del icono de nota en el PDF, en puntos (ver pdfium-core addAnnot)
 
 const overlaps = ([a0, b0, a1, b1], [c0, d0, c1, d1]) => a0 < c1 && a1 > c0 && b0 < d1 && b1 > d0;
@@ -39,9 +41,7 @@ export function redactConflicts(page, runs = []) {
   return out;
 }
 
-const NOUNS = { image: 'la firma', note: 'la nota', text: 'el texto', textbox: 'el cuadro de texto' };
-
-/** Mensaje del aviso para un conflicto. */
+/** Mensaje del aviso para un conflicto (kind: 'image' | 'note' | 'text' | 'textbox'). */
 export function conflictMessage(kind) {
-  return `Esta zona se va a borrar al guardar; mueve ${NOUNS[kind]} fuera.`;
+  return t(`reader.conflicts.${kind}`);
 }

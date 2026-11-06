@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { BadgeAlert, BadgeCheck, BadgeInfo, BadgeQuestionMark, BadgeX, LoaderCircle, Lock, X } from 'lucide-react';
 import { SIG_STATUS, worstStatus } from '../signed.js';
+import { t, useT, getLocale } from '../i18n/index.js';
 
 const ICON = { intact: BadgeCheck, modified: BadgeInfo, unknown: BadgeQuestionMark, broken: BadgeX, unavailable: BadgeQuestionMark, outdated: BadgeAlert };
 const TONE = { neutral: 'text-muted', warn: 'text-ink', danger: 'text-danger' };
 
 const fmtDate = (iso) => {
-  if (!iso) return 'Sin fecha';
-  try { return new Intl.DateTimeFormat('es-ES', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(iso)); } catch { return iso; }
+  if (!iso) return t('reader.sigStatus.noDate');
+  try { return new Intl.DateTimeFormat(getLocale(), { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(iso)); } catch { return iso; }
 };
 
 function StatusIcon({ status, size = 14 }) {
@@ -24,6 +25,7 @@ function StatusIcon({ status, size = 14 }) {
  *   policy: editPolicy() (aviso de certificación)
  */
 export default function SignatureStatus({ groups, policy }) {
+  useT(); // repintar al cambiar el idioma
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   const btnRef = useRef(null);
@@ -56,24 +58,24 @@ export default function SignatureStatus({ groups, policy }) {
         aria-expanded={open}
         aria-haspopup="dialog"
         onClick={() => setOpen((o) => !o)}
-        title="Ver las firmas del documento"
+        title={t('reader.sigStatus.view')}
         className={`inline-flex h-6 min-w-0 items-center gap-1.5 rounded-md px-1.5 transition-colors hover:bg-hover ${TONE[tone]}`}
       >
         <StatusIcon status={status} />
         <span className="truncate">{text}</span>
-        {policy.level !== 'full' && <Lock size={12} strokeWidth={1.75} className="shrink-0 text-muted" aria-label="Certificado" />}
+        {policy.level !== 'full' && <Lock size={12} strokeWidth={1.75} className="shrink-0 text-muted" aria-label={t('reader.sigStatus.certified')} />}
       </button>
 
       {open && (
         <div
           ref={ref}
           role="dialog"
-          aria-label="Firmas digitales"
+          aria-label={t('reader.sigStatus.title')}
           className="motion-pop fixed bottom-10 left-3 z-50 w-[400px] max-w-[calc(100vw-24px)] rounded-xl border border-line bg-panel p-4 text-sm text-ink shadow-pop"
         >
           <div className="mb-3 flex items-center justify-between gap-3">
-            <h2 className="text-base font-semibold tracking-tight">Firmas digitales</h2>
-            <button type="button" data-autofocus aria-label="Cerrar" onClick={() => { setOpen(false); btnRef.current?.focus(); }} className="grid size-7 place-items-center rounded-lg text-muted transition-colors hover:bg-hover hover:text-ink">
+            <h2 className="text-base font-semibold tracking-tight">{t('reader.sigStatus.title')}</h2>
+            <button type="button" data-autofocus aria-label={t('reader.common.close')} onClick={() => { setOpen(false); btnRef.current?.focus(); }} className="grid size-7 place-items-center rounded-lg text-muted transition-colors hover:bg-hover hover:text-ink">
               <X size={16} strokeWidth={1.75} />
             </button>
           </div>
@@ -90,7 +92,7 @@ export default function SignatureStatus({ groups, policy }) {
                       <li key={i} className="flex items-start gap-2.5 rounded-lg bg-hover/60 px-2.5 py-2">
                         <span className="mt-0.5"><StatusIcon status={s.status} size={16} /></span>
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate font-medium" title={s.name ?? ''}>{s.name ?? 'Firmante desconocido'}</span>
+                          <span className="block truncate font-medium" title={s.name ?? ''}>{s.name ?? t('reader.sigStatus.unknownSigner')}</span>
                           <span className="block text-xs text-muted">{fmtDate(s.date)}</span>
                           <span className={`block text-xs ${s.status === 'broken' ? 'text-danger' : 'text-muted'}`}>{SIG_STATUS[s.status].text}</span>
                           {s.reason && s.status !== 'modified' && <span className="block text-xs text-muted">{s.reason}</span>}
@@ -106,16 +108,15 @@ export default function SignatureStatus({ groups, policy }) {
           {policy.level !== 'full' ? (
             <p className="mt-3 flex items-start gap-2 rounded-lg bg-accent-soft px-2.5 py-2 text-xs text-accent-ink">
               <Lock size={14} strokeWidth={1.75} className="mt-px shrink-0" aria-hidden="true" />
-              {policy.notice} Lo que se cambie se guarda como una revisión nueva y la firma sigue siendo válida.
+              {policy.notice} {t('reader.sigStatus.certifiedNote')}
             </p>
           ) : (
             <p className="mt-3 text-xs text-muted">
-              Anotar, rellenar campos y girar páginas se guarda como una revisión nueva y la firma sigue siendo válida.
-              Quitar o reordenar páginas, añadir otro PDF o redactar obliga a reescribir el archivo y la rompe.
+              {t('reader.sigStatus.fullNote')}
             </p>
           )}
           <p className="mt-2 text-xs text-muted">
-            Solo se comprueba que el documento no cambió. Que el certificado sea de confianza y no esté revocado se comprobará más adelante.
+            {t('reader.sigStatus.trustNote')}
           </p>
         </div>
       )}

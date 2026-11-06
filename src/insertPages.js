@@ -2,6 +2,7 @@
 // En el estado son páginas con docId: null, index: -1 y created = { kind: 'blank' } |
 // { kind: 'image', blob, pxW, pxH, name }. compose() las crea al guardar (FPDFPage_New).
 import { newKey } from './state.js';
+import { t } from './i18n/index.js';
 
 const displaySize = (p) => (p.rot % 2 ? { w: p.height, h: p.width } : { w: p.width, h: p.height });
 
@@ -58,7 +59,7 @@ function base(created, size, source) {
   };
 }
 
-export const blankPage = (size) => base({ kind: 'blank' }, size, 'Página en blanco');
+export const blankPage = (size) => base({ kind: 'blank' }, size, t('dialogs.insert.blankPage'));
 
 export function imagePage({ blob, pxW, pxH, name }) {
   const size = imagePageSize(pxW, pxH);

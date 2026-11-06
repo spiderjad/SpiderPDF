@@ -24,19 +24,21 @@ export async function copyFixture(dir, name, as = name) {
  * Arranca la app de verdad (proceso principal, preload y la interfaz de dist/), con su propia carpeta
  * de datos (SPIDERPDF_USER_DATA): no choca con otra ventana abierta ni toca las preferencias del usuario.
  * files: PDFs que se abren al arrancar (como un doble clic). extraEnv: variables añadidas (p. ej.
- * SPIDERPDF_LEGACY_DATA). → { app, win, errors }
+ * SPIDERPDF_LEGACY_DATA). lang: idioma del sistema que ve la app (--lang de Chromium); por defecto español, el de
+ * las pruebas; con otro, la espera inicial no busca textos. → { app, win, errors }
  */
-export async function launch(dir, files = [], extraEnv = {}) {
+export async function launch(dir, files = [], extraEnv = {}, { lang = 'es-ES', spanish = lang.startsWith('es') } = {}) {
   const env = { ...process.env, SPIDERPDF_USER_DATA: path.join(dir, 'datos-app'), ...extraEnv };
   delete env.ELECTRON_RUN_AS_NODE; // VS Code la define y convierte Electron en Node
   delete env.VITE_DEV_SERVER_URL;
-  const app = await electron.launch({ args: [ROOT, ...files], cwd: ROOT, env, timeout: 60_000 });
+  const app = await electron.launch({ args: [`--lang=${lang}`, ROOT, ...files], cwd: ROOT, env, timeout: 60_000 });
   const win = await app.firstWindow();
   const errors = [];
   win.on('pageerror', (e) => errors.push(e.message));
   // El aviso de cambios sin guardar al cerrar es nativo y bloquearía la prueba: se acepta solo.
   await app.evaluate(({ dialog }) => { dialog.showMessageBoxSync = () => 0; });
-  if (files.length) await expect(win.locator('footer')).toContainText(/\d+ páginas?/, { timeout: 30_000 });
+  if (!spanish) await expect(win.locator('footer')).toBeVisible({ timeout: 30_000 }); // otro idioma: sin buscar textos
+  else if (files.length) await expect(win.locator('footer')).toContainText(/\d+ páginas?/, { timeout: 30_000 });
   else await expect(win.getByText('Abre un PDF para empezar')).toBeVisible({ timeout: 30_000 });
   return { app, win, errors };
 }

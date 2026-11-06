@@ -16,6 +16,8 @@ import { mapOutline, pruneOutline, flatten } from '../outline.js';
 import { incrementalPlan } from '../signed.js';
 import { ALL_PERMS } from '../security.js';
 import { downscaleRGBA, targetSize } from './resample.js';
+import { fontTraits } from './fontTraits.js';
+import { t as tr } from '../i18n/index.js'; // «t» se usa como coordenada (borde superior)
 
 // «Reducir tamaño»: espacios de color que se pueden pasar a JPEG sin cambiar los colores (gris, RGB, calibrados, ICC
 // de 1 o 3 componentes, indexados). CMYK, separaciones y demás se dejan (pasarlos a RGB cambia los colores).
@@ -42,12 +44,12 @@ const FIELD_READONLY = 1;
 const FIELD_MULTILINE = 1 << 12;
 const FIELD_PASSWORD = 1 << 13;
 const ERRORS = {
-  1: 'Error desconocido de PDFium.',
-  2: 'No se encontró el archivo o no se pudo leer.',
-  3: 'El archivo no es un PDF válido o está dañado.',
-  4: 'Este PDF está protegido con contraseña.',
-  5: 'Este PDF usa un sistema de seguridad no soportado.',
-  6: 'La página no existe o está dañada.',
+  1: 'engine.pdfium.unknown',
+  2: 'engine.pdfium.file',
+  3: 'engine.pdfium.format',
+  4: 'engine.pdfium.password',
+  5: 'engine.pdfium.security',
+  6: 'engine.pdfium.page',
 };
 
 const hexToRgb = (hex) => {
@@ -98,7 +100,7 @@ export class PdfCore {
 
   lastError() {
     const code = this.m.FPDF_GetLastError();
-    return ERRORS[code] || `Error de PDFium (código ${code}).`;
+    return ERRORS[code] ? tr(ERRORS[code]) : tr('engine.pdfium.code', { code });
   }
 
   // --- documentos -----------------------------------------------------------
@@ -128,7 +130,7 @@ export class PdfCore {
           if ((i + 1) % every === 0 || i + 1 === total) {
             onProgress?.({ done: i + 1, total });
             await new Promise((r) => setTimeout(r, 0)); // deja pasar otros mensajes (p. ej. «cancelar»)
-            if (isCancelled?.()) throw Object.assign(new Error('Apertura cancelada.'), { cancelled: true });
+            if (isCancelled?.()) throw Object.assign(new Error(tr('engine.openCancelled')), { cancelled: true });
           }
         }
       } finally {
@@ -204,11 +206,12 @@ export class PdfCore {
     this.heap().set(data, ptr);
     const handle = this.m.FPDF_LoadMemDocument(ptr, data.length, password);
     if (!handle) {
+      const code = this.m.FPDF_GetLastError();
       const msg = this.lastError();
       this.free(ptr);
       // needsPassword: está protegido; wrongPassword: además se probó una contraseña y no era.
-      const needsPassword = msg === ERRORS[4];
-      throw Object.assign(new Error(needsPassword && password ? 'La contraseña no es correcta.' : msg), { needsPassword, wrongPassword: needsPassword && !!password });
+      const needsPassword = code === 4;
+      throw Object.assign(new Error(needsPassword && password ? tr('engine.wrongPassword') : msg), { needsPassword, wrongPassword: needsPassword && !!password });
     }
     return { handle, ptr };
   }
@@ -236,7 +239,7 @@ export class PdfCore {
 
   entry(docId) {
     const d = this.docs.get(docId);
-    if (!d) throw new Error(`El documento ${docId} no está abierto.`);
+    if (!d) throw new Error(tr('engine.docNotOpen', { id: docId }));
     return d;
   }
 
@@ -258,7 +261,7 @@ export class PdfCore {
   /** Tamaño de una página tal como se ve (con su /Rotate), sin cargarla. → [width, height] en puntos */
   pageSize(docId, index) {
     return this.withMem(8, (sz) => {
-      if (!this.m.FPDF_GetPageSizeByIndexF(this.doc(docId), index, sz)) throw new Error(`No existe la página ${index + 1}.`);
+      if (!this.m.FPDF_GetPageSizeByIndexF(this.doc(docId), index, sz)) throw new Error(tr('engine.noSuchPage', { page: index + 1 }));
       return this.floats(sz, 2);
     });
   }
@@ -297,7 +300,7 @@ export class PdfCore {
       const width = Math.max(1, Math.round((swap ? ph : pw) * scale));
       const height = Math.max(1, Math.round((swap ? pw : ph) * scale));
       const bmp = this.m.FPDFBitmap_CreateEx(width, height, BITMAP_BGRA, 0, 0);
-      if (!bmp) throw new Error('Sin memoria para renderizar la página.');
+      if (!bmp) throw new Error(tr('engine.renderNoMemory'));
       try {
         const flags = FLAG_ANNOT | FLAG_REVERSE_BYTE_ORDER;
         this.m.FPDFBitmap_FillRect(bmp, 0, 0, width, height, 0xffffffff);
@@ -449,7 +452,7 @@ export class PdfCore {
         if (a.type === 'image') { this.addImage(entry, page, a, X, Y); contentChanged = true; }
         else if (a.type === 'textbox') {
           if (!a.text?.trim()) continue;
-          if (!fonts) throw new Error('Faltan las fuentes del texto nuevo.');
+          if (!fonts) throw new Error(tr('engine.textFontsMissing'));
           this.addTextBox(entry, page, a, [l, b, r, t], fonts);
           contentChanged = true;
         } else this.addAnnot(page, a, X, Y);
@@ -467,9 +470,9 @@ export class PdfCore {
 
   addAnnot(page, a, X, Y) {
     const subtype = { highlight: ANNOT.HIGHLIGHT, ink: ANNOT.INK, note: ANNOT.TEXT }[a.type];
-    if (!subtype) throw new Error(`Tipo de anotación desconocido: ${a.type}`);
+    if (!subtype) throw new Error(tr('engine.unknownAnnot', { type: a.type }));
     const annot = this.m.FPDFPage_CreateAnnot(page, subtype);
-    if (!annot) throw new Error('No se pudo crear la anotación.');
+    if (!annot) throw new Error(tr('engine.annotFailed'));
     try {
       const [cr, cg, cb] = hexToRgb(a.color ?? '#FFD400');
       this.m.FPDFAnnot_SetColor(annot, 0, cr, cg, cb, 255);
@@ -525,7 +528,7 @@ export class PdfCore {
   /** Bitmap de PDFium (BGRA) con los píxeles RGBA dados. Destruir con FPDFBitmap_Destroy. */
   bitmapFromRGBA(width, height, pixels) {
     const bmp = this.m.FPDFBitmap_CreateEx(width, height, BITMAP_BGRA, 0, 0);
-    if (!bmp) throw new Error('Sin memoria para la imagen.');
+    if (!bmp) throw new Error(tr('engine.imageNoMemory'));
     const buf = this.m.FPDFBitmap_GetBuffer(bmp);
     const heap = this.heap();
     for (let i = 0; i < width * height * 4; i += 4) {
@@ -542,9 +545,9 @@ export class PdfCore {
    * ({ width, height, pixels RGBA }), con esa imagen ocupando toda la página.
    */
   createPage(h, index, { width, height, image } = {}) {
-    if (!(width > 0 && height > 0)) throw new Error('Tamaño de página no válido.');
+    if (!(width > 0 && height > 0)) throw new Error(tr('engine.badPageSize'));
     const page = this.m.FPDFPage_New(h, index, width, height);
-    if (!page) throw new Error('No se pudo crear la página nueva.');
+    if (!page) throw new Error(tr('engine.newPageFailed'));
     try {
       if (!image) return;
       const bmp = this.bitmapFromRGBA(image.width, image.height, image.pixels);
@@ -552,7 +555,7 @@ export class PdfCore {
         const obj = this.m.FPDFPageObj_NewImageObj(h);
         if (!this.m.FPDFImageObj_SetBitmap(0, 0, obj, bmp)) {
           this.m.FPDFPageObj_Destroy(obj);
-          throw new Error('No se pudo insertar la imagen.');
+          throw new Error(tr('engine.imageInsertFailed'));
         }
         this.m.FPDFImageObj_SetMatrix(obj, width, 0, 0, height, 0, 0);
         this.m.FPDFPage_InsertObject(page, obj);
@@ -642,14 +645,14 @@ export class PdfCore {
     return {
       get: (key) => {
         if (handles.has(key)) return handles.get(key);
-        if (!this.fontBytes) throw new Error('No están disponibles las fuentes para el texto nuevo.');
+        if (!this.fontBytes) throw new Error(tr('engine.textFontsUnavailable'));
         const full = this.fontBytes(key);
         const data = this.subsetFont ? this.subsetFont(full, texts.get(key) ?? '') : full;
         const p = this.malloc(data.length);
         this.heap().set(data, p);
         const font = this.m.FPDFText_LoadFont(h, p, data.length, 2 /* TrueType */, 1 /* CID: texto Unicode */);
         this.free(p);
-        if (!font) throw new Error('No se pudo cargar la fuente del texto nuevo.');
+        if (!font) throw new Error(tr('engine.textFontLoadFailed'));
         handles.set(key, font);
         return font;
       },
@@ -724,7 +727,7 @@ export class PdfCore {
       const dx = st.align === 'center' ? (bw - w) / 2 : st.align === 'right' ? bw - w : 0;
       const [px, py] = toPdf(bx + dx, by + base0 + i * lh);
       const obj = this.m.FPDFPageObj_CreateTextObj(h, font, size);
-      if (!obj) throw new Error('No se pudo crear el texto.');
+      if (!obj) throw new Error(tr('engine.textFailed'));
       const ws = this.wide(line);
       this.m.FPDFText_SetText(obj, ws);
       this.free(ws);
@@ -743,7 +746,7 @@ export class PdfCore {
       const obj = this.m.FPDFPageObj_NewImageObj(entry.handle);
       if (!this.m.FPDFImageObj_SetBitmap(0, 0, obj, bmp)) {
         this.m.FPDFPageObj_Destroy(obj);
-        throw new Error('No se pudo insertar la imagen.');
+        throw new Error(tr('engine.imageInsertFailed'));
       }
       const [u0, v0, u1, v1] = a.rect;
       const x0 = X(u0); const x1 = X(u1); const y0 = Y(v1); const y1 = Y(v0);
@@ -823,10 +826,10 @@ export class PdfCore {
   /** Crea un objeto de texto con fuente estándar, copiando el aspecto de style. */
   newTextObj(docHandle, text, style, matrix = style.matrix, size = style.size) {
     const font = this.m.FPDFText_LoadStandardFont(docHandle, this.standardFont(style.fontName, style.weight, style.italic));
-    if (!font) throw new Error('No se pudo cargar la fuente para el texto nuevo.');
+    if (!font) throw new Error(tr('engine.textFontLoadFailed2'));
     try {
       const obj = this.m.FPDFPageObj_CreateTextObj(docHandle, font, size);
-      if (!obj) throw new Error('No se pudo crear el texto.');
+      if (!obj) throw new Error(tr('engine.textFailed'));
       const w = this.wide(text);
       this.m.FPDFText_SetText(obj, w);
       this.free(w);
@@ -923,6 +926,137 @@ export class PdfCore {
   }
 
   /**
+   * Aspecto de cada carácter de textChars (mismos índices), para exportar a Word.
+   * → { size: Float32Array (puntos, 0 si no se sabe), flags: Uint8Array (1 negrita, 2 cursiva),
+   *     color: Uint32Array (0xRRGGBB), font: Uint16Array (índice en fonts), fonts: [nombre sin prefijo de subconjunto] }
+   */
+  charStyles(docId, index) {
+    const entry = this.entry(docId);
+    const page = this.m.FPDF_LoadPage(entry.handle, index);
+    if (!page) throw new Error(this.lastError());
+    const tp = this.m.FPDFText_LoadPage(page);
+    entry.fontInfo ??= new Map(); // fuente (puntero + nombre) → { name, bold, italic }
+    try {
+      const n = Math.max(0, this.m.FPDFText_CountChars(tp));
+      const size = new Float32Array(n);
+      const flags = new Uint8Array(n);
+      const color = new Uint32Array(n);
+      const font = new Uint16Array(n);
+      const fonts = [];
+      const fontIdx = new Map();
+      const byObj = new Map(); // objeto de texto → aspecto: todos sus caracteres lo comparten
+      for (let i = 0; i < n; i++) {
+        const o = this.m.FPDFText_GetTextObject(tp, i);
+        if (!o) continue;
+        let st = byObj.get(o);
+        if (!st) {
+          // El tamaño visible sale de la matriz del objeto: FPDFText_GetFontSize da valores absurdos en algunos
+          // PDF (327 pt para el cuerpo de un PDF de Chrome).
+          const t = this.textStyle(o);
+          const f = this.fontInfo(entry, this.m.FPDFTextObj_GetFont(o), t);
+          if (!fontIdx.has(f.name)) { fontIdx.set(f.name, fonts.length); fonts.push(f.name); }
+          const [r, g, b] = t.rgba;
+          st = { size: t.ptSize, flags: (f.bold ? 1 : 0) | (f.italic ? 2 : 0), color: ((r << 16) | (g << 8) | b) >>> 0, font: fontIdx.get(f.name) };
+          byObj.set(o, st);
+        }
+        size[i] = st.size; flags[i] = st.flags; color[i] = st.color; font[i] = st.font;
+      }
+      return { size, flags, color, font, fonts };
+    } finally {
+      this.m.FPDFText_ClosePage(tp);
+      this.m.FPDF_ClosePage(page);
+    }
+  }
+
+  /**
+   * Nombre, negrita y cursiva de una fuente. Primero lo que dice el propio archivo de la fuente incrustada (OS/2 y
+   * nombre completo, src/engine/fontTraits.js); si no, el nombre del PDF y su peso (solo si tiene sentido: en
+   * algunos PDF FPDFFont_GetWeight devuelve miles). Nombres genéricos («CIDFont+F1», «F2») → la familia.
+   */
+  fontInfo(entry, f, t) {
+    if (!f) return { name: '', bold: false, italic: false };
+    const key = `${f}:${t.fontName}`; // con el nombre: un puntero liberado y reutilizado no confunde dos fuentes
+    let info = entry.fontInfo.get(key);
+    if (info) return info;
+    const base = t.fontName.replace(/^[A-Z]{6}\+/, '');
+    let traits = null;
+    if (this.m.FPDFFont_GetIsEmbedded(f)) {
+      const data = this.withMem(4, (outLen) => {
+        if (!this.m.FPDFFont_GetFontData(f, 0, 0, outLen)) return null;
+        const len = this.rt.getValue(outLen, 'i32');
+        if (!(len > 0) || len > 40e6) return null;
+        return this.withMem(len, (p) => (this.m.FPDFFont_GetFontData(f, p, len, outLen) ? this.heap().slice(p, p + len) : null));
+      });
+      if (data) { try { traits = fontTraits(data); } catch { traits = null; } }
+    }
+    const family = (() => {
+      const len = this.m.FPDFFont_GetFamilyName(f, 0, 0);
+      if (!(len > 1)) return '';
+      return this.withMem(len, (p) => { this.m.FPDFFont_GetFamilyName(f, p, len); return new TextDecoder().decode(this.heap().slice(p, p + len - 1)); });
+    })();
+    const generic = /^(CIDFont\+)?F\d+$|^T\d+(_\d+)?$|^Font\d*$/i.test(base);
+    const name = generic ? (family || traits?.name || base) : base;
+    const low = `${base} ${traits?.name ?? ''}`.toLowerCase();
+    const weightOk = t.weight >= 100 && t.weight <= 1000;
+    const bold = traits ? traits.bold : (weightOk && t.weight >= 600) || /bold|black|heavy|semibold|demi/.test(low);
+    const italic = traits ? traits.italic || t.italic !== 0 : t.italic !== 0 || /italic|oblique/.test(low);
+    info = { name, bold, italic };
+    entry.fontInfo.set(key, info);
+    return info;
+  }
+
+  /**
+   * Imágenes de primer nivel de una página, para exportar a Word: [{ rect: [u0, v0, u1, v1] (fracciones sin girar),
+   * width, height, data: RGBA, alpha }], de arriba abajo. Se omiten las diminutas (menos del 2 % de la página).
+   * Cada una a como mucho maxDpi de su tamaño en la página (y maxSide píxeles). Con transparencia (firmas, logos
+   * PNG) se toma como se dibuja, con su alfa; si no, sus píxeles originales.
+   */
+  pageImages(docId, index, { maxDpi = 200, maxSide = 2400 } = {}) {
+    const h = this.doc(docId);
+    const page = this.m.FPDF_LoadPage(h, index);
+    if (!page) throw new Error(this.lastError());
+    const out = [];
+    try {
+      const [l, b, r, t] = this.box(page);
+      const W = r - l; const H = t - b;
+      const n = this.m.FPDFPage_CountObjects(page);
+      for (let k = 0; k < n; k++) {
+        const o = this.m.FPDFPage_GetObject(page, k);
+        if (this.m.FPDFPageObj_GetType(o) !== OBJ.IMAGE) continue;
+        const [x0, y0, x1, y1] = this.objBounds(o);
+        if ((x1 - x0) < 0.02 * W && (y1 - y0) < 0.02 * H) continue;
+        const alpha = this.imageHasAlpha(h, page, o);
+        let img = null;
+        if (alpha) {
+          // Dibujada (con su máscara) a su resolución propia: se agranda la matriz un momento, porque
+          // GetRenderedBitmap la dibuja a 1 píxel por punto de la página.
+          const px = this.withMem(8, (p) => (this.m.FPDFImageObj_GetImagePixelSize(o, p, p + 4) ? this.rt.getValue(p, 'i32') : 0));
+          const k = Math.max(1, Math.min(8, px / Math.max(1, x1 - x0), ((x1 - x0) / 72) * maxDpi / Math.max(1, x1 - x0)));
+          const mat = this.objMatrix(o);
+          if (k > 1) this.setObjMatrix(o, mat.map((v, j) => (j < 4 ? v * k : v)));
+          const bmp = this.m.FPDFImageObj_GetRenderedBitmap(h, page, o);
+          if (k > 1) this.setObjMatrix(o, mat);
+          if (bmp) { try { img = this.readBitmap(bmp, true); } finally { this.m.FPDFBitmap_Destroy(bmp); } }
+        }
+        img ??= this.imageRGBA(o);
+        if (!img) continue;
+        const scale = Math.min(maxSide, Math.ceil(((x1 - x0) / 72) * maxDpi)) / img.width;
+        if (scale < 1) {
+          const w2 = Math.max(1, Math.round(img.width * scale)); const h2 = Math.max(1, Math.round(img.height * scale));
+          img = { data: downscaleRGBA(img.data, img.width, img.height, w2, h2), width: w2, height: h2 };
+        }
+        out.push({
+          rect: [(Math.max(x0, l) - l) / W, (t - Math.min(y1, t)) / H, (Math.min(x1, r) - l) / W, (t - Math.max(y0, b)) / H],
+          ...img, alpha,
+        });
+      }
+    } finally {
+      this.m.FPDF_ClosePage(page);
+    }
+    return out.sort((a, c) => a.rect[1] - c.rect[1]);
+  }
+
+  /**
    * Busca en una página sin distinguir mayúsculas ni tildes.
    * → { hasText, matches: [{ start, end, rects: [[u0, v0, u1, v1], …] }] } (un rectángulo por línea).
    */
@@ -1010,7 +1144,7 @@ export class PdfCore {
         const sx = len / natural;
         const cos = dx / len; const sin = dy / len;
         const obj = this.m.FPDFPageObj_CreateTextObj(h, font, size);
-        if (!obj) throw new Error('No se pudo crear el texto reconocido.');
+        if (!obj) throw new Error(tr('engine.ocrTextFailed'));
         const ws = this.wide(w.space ? `${text} ` : text);
         this.m.FPDFText_SetText(obj, ws);
         this.free(ws);
@@ -1038,10 +1172,10 @@ export class PdfCore {
     try {
       const plan = keys.map((k) => {
         const o = this.m.FPDFPage_GetObject(page, k);
-        if (!o || this.m.FPDFPageObj_GetType(o) !== OBJ.TEXT) throw new Error(`El texto que editaste en la página ${index + 1} ya no está.`);
+        if (!o || this.m.FPDFPageObj_GetType(o) !== OBJ.TEXT) throw new Error(tr('engine.editedTextGone', { page: index + 1 }));
         const current = this.readWide((p, len) => this.m.FPDFTextObj_GetText(o, tp, p, len));
         const { text, from } = edits[k];
-        if (from !== undefined && current !== from) throw new Error(`El texto «${from}» de la página ${index + 1} no coincide con el del archivo.`);
+        if (from !== undefined && current !== from) throw new Error(tr('engine.editedTextMismatch', { text: from, page: index + 1 }));
         return { k, o, text, style: this.textStyle(o) };
       });
       this.m.FPDFText_ClosePage(tp);
@@ -1140,12 +1274,12 @@ export class PdfCore {
         const remove = () => { this.m.FPDFPage_RemoveObject(page, o); this.m.FPDFPageObj_Destroy(o); };
         if (type === OBJ.IMAGE) {
           if (inside(bounds)) remove();
-          else if (!this.blackenImage(o, Z)) { remove(); warnings.add(`Página ${index + 1}: se quitó entera una imagen que no se podía recortar.`); }
+          else if (!this.blackenImage(o, Z)) { remove(); warnings.add(tr('engine.warn.imageRemoved', { page: index + 1 })); }
         } else if (type === OBJ.PATH || type === OBJ.SHADING) {
           if (inside(bounds)) remove();
         } else if (type === OBJ.FORM) {
           if (inside(bounds)) remove();
-          else warnings.add(`Página ${index + 1}: hay contenido agrupado bajo la zona que no se pudo limpiar del todo; queda tapado.`);
+          else warnings.add(tr('engine.warn.groupCovered', { page: index + 1 }));
         } else if (type === OBJ.TEXT && !byObj.has(o)) {
           remove(); // texto que PDFium no lista carácter a carácter: se quita entero
         }
@@ -1168,7 +1302,7 @@ export class PdfCore {
         }
         if (!hit) continue;
         this.m.FPDFPage_RemoveAnnot(page, i);
-        if (widget) warnings.add(`Página ${index + 1}: se eliminó un campo de formulario que tocaba la zona.`);
+        if (widget) warnings.add(tr('engine.warn.fieldRemoved', { page: index + 1 }));
       }
 
       // 4. Recuadros negros.
@@ -1240,12 +1374,12 @@ export class PdfCore {
    * hidden: «Quitar información oculta» (al compartir): se guarda como un PDF nuevo, igual que al redactar, sin
    *   metadatos, notas, adjuntos, JavaScript ni formulario interactivo (los campos quedan como texto fijo).
    */
-  compose(refs, onProgress, { security, hidden = false } = {}) {
+  compose(refs, onProgress, { security, hidden = false, outline } = {}) {
     this.warnings = [];
     this.post = null;
     this.incremental = false;
     this.redactedText = [];
-    if (!refs.length) throw new Error('No hay páginas para guardar.');
+    if (!refs.length) throw new Error(tr('engine.noPagesToSave'));
 
     // 1. Base = el PDF que más páginas aporta: se edita una copia suya. Las páginas nuevas (docId null,
     //    con create) no cuentan; si todas son nuevas, se parte de un documento vacío.
@@ -1286,7 +1420,7 @@ export class PdfCore {
       let dest = work.get(baseId);
       if (!dest) {
         const doc = this.m.FPDF_CreateNewDocument();
-        if (!doc) throw new Error('No se pudo crear el documento.');
+        if (!doc) throw new Error(tr('engine.createDocFailed'));
         dest = { handle: doc, ptr: 0, size: 0 };
         created.push(dest);
       }
@@ -1308,20 +1442,22 @@ export class PdfCore {
             const pos = order.indexOf(r.index, i);
             if (pos !== i) {
               this.rt.setValue(idx, pos, 'i32');
-              if (!this.m.FPDF_MovePages(h, idx, 1, i)) throw new Error('No se pudo reordenar las páginas.');
+              if (!this.m.FPDF_MovePages(h, idx, 1, i)) throw new Error(tr('engine.reorderFailed'));
               order.splice(i, 0, ...order.splice(pos, 1));
             }
           } else {
             const src = work.get(r.docId)?.handle ?? this.doc(r.docId);
             this.rt.setValue(idx, r.index, 'i32');
-            if (!this.m.FPDF_ImportPagesByIndex(h, src, idx, 1, i)) throw new Error(`No se pudo copiar la página ${r.index + 1}.`);
+            if (!this.m.FPDF_ImportPagesByIndex(h, src, idx, 1, i)) throw new Error(tr('engine.copyPageFailed', { page: r.index + 1 }));
             order.splice(i, 0, null);
           }
         });
       });
 
-      // 4b. Índice: cada marcador a la nueva posición de su página; un grupo por archivo si se unieron varios.
-      this.rebuildOutline(h, refs);
+      // 4b. Índice: el creado en la app (desde un índice impreso) sustituye al de los PDF; si no, cada
+      //     marcador a la nueva posición de su página y un grupo por archivo si se unieron varios.
+      if (outline) this.writeOutline(h, outline);
+      else this.rebuildOutline(h, refs);
 
       // Texto nuevo: cada fuente incluida se subconjunta una vez con las letras de todos los cuadros que la pueden
       // usar (también los que van con la fuente del PDF, por si a esta le falta alguna letra).
@@ -1359,8 +1495,8 @@ export class PdfCore {
       const protect = security?.user != null ? security : null;
       // Páginas de otro PDF protegido: llevan la protección del resultado (la del base, o ninguna).
       if (!protect && (security?.remove || !baseEncrypted)) {
-        const lost = [...new Set(refs.filter((r) => fromPdf(r) && !isBase(r) && this.security(r.docId).encrypted).map((r) => r.source ?? 'otro PDF'))];
-        if (lost.length) this.warnings.push(`Las páginas de ${lost.map((n) => `«${n}»`).join(', ')} se guardan sin contraseña.`);
+        const lost = [...new Set(refs.filter((r) => fromPdf(r) && !isBase(r) && this.security(r.docId).encrypted).map((r) => r.source ?? tr('engine.otherPdf')))];
+        if (lost.length) this.warnings.push(tr('engine.warn.lostPassword', { names: lost.map((n) => tr('engine.quoted', { name: n })).join(', ') }));
       }
       if (hidden || refs.some((r) => zonesOf(r).length)) {
         const bytes = this.cleanSave(dest, this.redactedText, protect, { hidden });
@@ -1370,7 +1506,7 @@ export class PdfCore {
         return bytes;
       }
       if (security?.remove) {
-        if (baseEncrypted && !this.m.EPDF_RemoveEncryption(h)) throw new Error('No se pudo quitar la contraseña.');
+        if (baseEncrypted && !this.m.EPDF_RemoveEncryption(h)) throw new Error(tr('engine.removePasswordFailed'));
         this.post = { rewrite: true };
         return this.save(h);
       }
@@ -1432,13 +1568,13 @@ export class PdfCore {
         this.closePage(entry, page);
       }
     }
-    if (flattened) this.warnings.push(hidden && !terms.length ? 'Los campos de formulario quedan como texto fijo.' : 'Los campos de formulario del PDF redactado quedan como texto fijo.');
+    if (flattened) this.warnings.push(tr(hidden && !terms.length ? 'engine.warn.fieldsFlat' : 'engine.warn.fieldsFlatRedacted'));
 
     const doc = this.m.FPDF_CreateNewDocument();
-    if (!doc) throw new Error('No se pudo crear el documento redactado.');
+    if (!doc) throw new Error(tr('engine.createRedactedFailed'));
     const withWide = (text, fn) => { const w = this.wide(text); try { return fn(w); } finally { this.free(w); } };
     try {
-      if (!this.m.FPDF_ImportPagesByIndex(doc, src, 0, 0, 0)) throw new Error('No se pudieron copiar las páginas redactadas.');
+      if (!this.m.FPDF_ImportPagesByIndex(doc, src, 0, 0, 0)) throw new Error(tr('engine.copyRedactedFailed'));
       this.m.FPDF_CopyViewerPreferences(doc, src);
       const lang = this.readWide((p, len) => this.m.FPDFCatalog_GetLanguage(src, p, len));
       if (lang) withWide(lang, (w) => this.m.FPDFCatalog_SetLanguage(doc, w));
@@ -1546,6 +1682,141 @@ export class PdfCore {
   }
 
   /**
+   * Sustituye el índice del documento h por nodes = [{ title, pos, children }] (pos = página del resultado,
+   * -1 = sin destino). Cada marcador lleva a su página con «ajustar la página».
+   */
+  writeOutline(h, nodes) {
+    this.m.EPDFBookmark_Clear(h);
+    const count = this.m.FPDF_GetPageCount(h);
+    const write = (list, parent, depth) => {
+      if (depth > 32) return;
+      for (const n of list) {
+        const w = this.wide(String(n.title ?? '').slice(0, 500));
+        const bm = this.m.EPDFBookmark_AppendChild(h, parent, w);
+        this.free(w);
+        if (!bm) continue;
+        if (n.pos >= 0 && n.pos < count) {
+          const dest = this.makeDest(h, n.pos, null);
+          if (dest) this.m.EPDFBookmark_SetDest(h, bm, dest);
+        }
+        write(n.children ?? [], bm, depth + 1);
+      }
+    };
+    write(nodes, 0, 0);
+  }
+
+  // --- líneas dibujadas (para detectar tablas) ------------------------------------------------
+  /**
+   * Segmentos rectos horizontales y verticales de los trazados de primer nivel de una página (bordes de tablas,
+   * subrayados, rectángulos con trazo y rellenos finos), en fracciones de la página sin girar, v hacia abajo:
+   * [[u0, v0, u1, v1], …]. Los rellenos gruesos (fondos de celda) no cuentan: no separan filas.
+   * Los muy cortos (menos del 1 % de la página) no cuentan. Los de dentro de Form XObjects tampoco.
+   */
+  rules(docId, index) {
+    const page = this.m.FPDF_LoadPage(this.doc(docId), index);
+    if (!page) throw new Error(this.lastError());
+    const out = [];
+    try {
+      const [l, b, r, t] = this.box(page);
+      const w = r - l; const h = t - b;
+      const n = this.m.FPDFPage_CountObjects(page);
+      this.withMem(8, (pt) => {
+        for (let i = 0; i < n && out.length < 20000; i++) {
+          const o = this.m.FPDFPage_GetObject(page, i);
+          if (this.m.FPDFPageObj_GetType(o) !== 2) continue; // 2 = trazado
+          // Solo relleno (sin trazo): es el fondo de una celda, salvo que sea fino (una línea dibujada como rectángulo).
+          const stroked = this.withMem(8, (q) => (this.m.FPDFPath_GetDrawMode(o, q, q + 4) ? this.rt.getValue(q + 4, 'i32') : 1));
+          if (!stroked) {
+            const [bl, bb2, br, bt] = this.objBounds(o);
+            const thin = Math.min(br - bl, bt - bb2) < 2.5;
+            if (thin && Math.max(br - bl, bt - bb2) > 0.01 * Math.min(w, h)) {
+              const horiz = br - bl > bt - bb2;
+              const u0 = (bl - l) / w; const u1 = (br - l) / w; const v0 = (t - bt) / h; const v1 = (t - bb2) / h;
+              out.push(horiz ? [u0, (v0 + v1) / 2, u1, (v0 + v1) / 2] : [(u0 + u1) / 2, v0, (u0 + u1) / 2, v1]);
+            }
+            continue;
+          }
+          const [a, bb, c, d, e, f] = this.objMatrix(o);
+          const map = (x, y) => [a * x + c * y + e, bb * x + d * y + f];
+          const segs = this.m.FPDFPath_CountSegments(o);
+          let start = null; let prev = null;
+          const add = (p1, p2) => {
+            const [x0, y0] = p1; const [x1, y1] = p2;
+            const horiz = Math.abs(y1 - y0) < 0.5; const vert = Math.abs(x1 - x0) < 0.5;
+            if (!horiz && !vert) return;
+            const u0 = (Math.min(x0, x1) - l) / w; const u1 = (Math.max(x0, x1) - l) / w;
+            const v0 = (t - Math.max(y0, y1)) / h; const v1 = (t - Math.min(y0, y1)) / h;
+            if (u1 - u0 < 0.01 && v1 - v0 < 0.01) return;
+            out.push([u0, v0, u1, v1]);
+          };
+          for (let k = 0; k < segs; k++) {
+            const sg = this.m.FPDFPath_GetPathSegment(o, k);
+            if (!this.m.FPDFPathSegment_GetPoint(sg, pt, pt + 4)) continue;
+            const q = map(...this.floats(pt, 2));
+            const type = this.m.FPDFPathSegment_GetType(sg); // 0 línea, 1 curva, 2 mover
+            if (type === 2) { start = q; prev = q; continue; }
+            if (type === 0 && prev) add(prev, q);
+            prev = q;
+            if (this.m.FPDFPathSegment_GetClose(sg) && start) { add(q, start); prev = start; }
+          }
+        }
+      });
+    } finally {
+      this.m.FPDF_ClosePage(page);
+    }
+    return out;
+  }
+
+  // --- enlaces -------------------------------------------------------------------------------
+  /**
+   * Enlaces de una página: [{ rect: [u0, v0, u1, v1], pageIndex } | { rect, uri }], rect en fracciones de la
+   * página sin girar (v hacia abajo). pageIndex: página de este PDF a la que lleva. uri: dirección web o
+   * de correo. Se ignoran los que abren otros archivos o ejecutan algo (lanzar, JavaScript…).
+   */
+  links(docId, index) {
+    const h = this.doc(docId);
+    const page = this.m.FPDF_LoadPage(h, index);
+    if (!page) throw new Error(this.lastError());
+    const out = [];
+    try {
+      const [l, b, r, t] = this.box(page);
+      const w = r - l; const hh = t - b;
+      const count = this.m.FPDF_GetPageCount(h);
+      this.withMem(24, (p) => {
+        const pos = p; const lp = p + 4; const rc = p + 8;
+        this.rt.setValue(pos, 0, 'i32');
+        for (let guard = 0; guard < 5000 && this.m.FPDFLink_Enumerate(page, pos, lp); guard++) {
+          const link = this.rt.getValue(lp, 'i32');
+          if (!link || !this.m.FPDFLink_GetAnnotRect(link, rc)) continue;
+          const [x0, y0, x1, y1] = this.floats(rc, 4); // FS_RECTF: left, top, right, bottom
+          const rect = [(Math.min(x0, x1) - l) / w, (t - Math.max(y0, y1)) / hh, (Math.max(x0, x1) - l) / w, (t - Math.min(y0, y1)) / hh];
+          if (!(rect[2] > rect[0] && rect[3] > rect[1])) continue;
+          let dest = this.m.FPDFLink_GetDest(h, link);
+          const action = dest ? 0 : this.m.FPDFLink_GetAction(link);
+          const type = action ? this.m.FPDFAction_GetType(action) : 0;
+          if (!dest && type === 1) dest = this.m.FPDFAction_GetDest(h, action); // Ir a (GoTo)
+          if (dest) {
+            const pageIndex = this.m.FPDFDest_GetDestPageIndex(h, dest);
+            if (pageIndex >= 0 && pageIndex < count) out.push({ rect, pageIndex });
+          } else if (type === 3) { // URI
+            const len = this.m.FPDFAction_GetURIPath(h, action, 0, 0);
+            if (len > 1 && len < 8192) {
+              const uri = this.withMem(len, (q) => {
+                this.m.FPDFAction_GetURIPath(h, action, q, len);
+                return new TextDecoder().decode(this.heap().slice(q, q + len - 1));
+              }).trim();
+              if (uri) out.push({ rect, uri });
+            }
+          }
+        }
+      });
+    } finally {
+      this.m.FPDF_ClosePage(page);
+    }
+    return out;
+  }
+
+  /**
    * Índice del resultado de compose: cada marcador apunta a la nueva posición de su página; los que
    * apuntaban a páginas eliminadas se quitan (salvo que tengan hijos que sigan). Con varios PDFs, un
    * grupo por archivo con su nombre. Si viene todo de un PDF y ningún marcador perdió su página, se deja
@@ -1621,7 +1892,7 @@ export class PdfCore {
           this.closePage(entry, page);
         }
         onProgress?.({ phase: 'scan', done: i + 1, total: pageCount });
-        if (isCancelled?.()) throw Object.assign(new Error('Cancelado.'), { cancelled: true });
+        if (isCancelled?.()) throw Object.assign(new Error(tr('engine.cancelled')), { cancelled: true });
       }
     } finally {
       this.free(meta);
@@ -1640,7 +1911,7 @@ export class PdfCore {
       if (!img) continue;
       const small = downscaleRGBA(img.data, img.width, img.height, t.width, t.height);
       const jpeg = await encode(small, t.width, t.height, quality);
-      if (isCancelled?.()) throw Object.assign(new Error('Cancelado.'), { cancelled: true });
+      if (isCancelled?.()) throw Object.assign(new Error(tr('engine.cancelled')), { cancelled: true });
       if (jpeg.length * g.uses.length >= g.rawLen) continue; // no se gana nada
       for (const u of g.uses) {
         if (!plan.has(u.page)) plan.set(u.page, []);
@@ -1654,7 +1925,7 @@ export class PdfCore {
         for (const { k, jpeg } of list) {
           const o = this.m.FPDFPage_GetObject(page, k);
           const ok = this.withMem(jpeg.length, (p) => { this.heap().set(jpeg, p); return this.m.EPDFImageObj_SetJpeg(0, 0, o, p, jpeg.length); });
-          if (!ok) throw new Error('No se pudo cambiar una imagen.');
+          if (!ok) throw new Error(tr('engine.imageChangeFailed'));
         }
         this.m.FPDFPage_GenerateContent(page); // sin esto, la página seguiría apuntando a la imagen original
       } finally {
@@ -1693,34 +1964,36 @@ export class PdfCore {
   imageRGBA(o) {
     const bmp = this.m.FPDFImageObj_GetBitmap(o);
     if (!bmp) return null;
-    try {
-      const width = this.m.FPDFBitmap_GetWidth(bmp);
-      const height = this.m.FPDFBitmap_GetHeight(bmp);
-      const stride = this.m.FPDFBitmap_GetStride(bmp);
-      const format = this.m.FPDFBitmap_GetFormat(bmp); // 1 gris, 2 BGR, 3 BGRx, 4 BGRA
-      const bpp = { 1: 1, 2: 3, 3: 4, 4: 4 }[format];
-      if (!bpp) return null;
-      const buf = this.m.FPDFBitmap_GetBuffer(bmp);
-      const heap = this.heap();
-      const data = new Uint8Array(width * height * 4);
-      for (let y = 0; y < height; y++) {
-        let s = buf + y * stride;
-        let d = y * width * 4;
-        for (let x = 0; x < width; x++, s += bpp, d += 4) {
-          if (bpp === 1) { data[d] = data[d + 1] = data[d + 2] = heap[s]; } else { data[d] = heap[s + 2]; data[d + 1] = heap[s + 1]; data[d + 2] = heap[s]; }
-          data[d + 3] = 255;
-        }
+    try { return this.readBitmap(bmp, false); } finally { this.m.FPDFBitmap_Destroy(bmp); }
+  }
+
+  /** Un FPDF_BITMAP como { data: RGBA, width, height }; keepAlpha conserva el alfa de los BGRA (si no, opaco). */
+  readBitmap(bmp, keepAlpha) {
+    const width = this.m.FPDFBitmap_GetWidth(bmp);
+    const height = this.m.FPDFBitmap_GetHeight(bmp);
+    const stride = this.m.FPDFBitmap_GetStride(bmp);
+    const format = this.m.FPDFBitmap_GetFormat(bmp); // 1 gris, 2 BGR, 3 BGRx, 4 BGRA
+    const bpp = { 1: 1, 2: 3, 3: 4, 4: 4 }[format];
+    if (!bpp) return null;
+    const withAlpha = keepAlpha && format === 4;
+    const buf = this.m.FPDFBitmap_GetBuffer(bmp);
+    const heap = this.heap();
+    const data = new Uint8Array(width * height * 4);
+    for (let y = 0; y < height; y++) {
+      let src = buf + y * stride;
+      let d = y * width * 4;
+      for (let x = 0; x < width; x++, src += bpp, d += 4) {
+        if (bpp === 1) { data[d] = data[d + 1] = data[d + 2] = heap[src]; } else { data[d] = heap[src + 2]; data[d + 1] = heap[src + 1]; data[d + 2] = heap[src]; }
+        data[d + 3] = withAlpha ? heap[src + 3] : 255;
       }
-      return { data, width, height };
-    } finally {
-      this.m.FPDFBitmap_Destroy(bmp);
     }
+    return { data, width, height };
   }
 
   /** Cifra el documento con AES-256 (revisión 6). owner vacío = la misma contraseña que user. */
   protect(h, { user, owner, perms }) {
-    if (!user) throw new Error('Falta la contraseña para abrir.');
-    if (!this.m.EPDF_SetEncryption(h, user, owner || user, perms | 0)) throw new Error('No se pudo proteger el PDF.');
+    if (!user) throw new Error(tr('engine.openPasswordMissing'));
+    if (!this.m.EPDF_SetEncryption(h, user, owner || user, perms | 0)) throw new Error(tr('engine.protectFailed'));
   }
 
   /**
@@ -1731,7 +2004,7 @@ export class PdfCore {
     const writer = this.m.PDFiumExt_OpenFileWriter();
     try {
       const ok = incremental ? this.m.FPDF_SaveAsCopy(handle, writer, FPDF_INCREMENTAL) : this.m.PDFiumExt_SaveAsCopy(handle, writer);
-      if (!ok) throw new Error('No se pudo generar el PDF.');
+      if (!ok) throw new Error(tr('engine.generateFailed'));
       const size = this.m.PDFiumExt_GetFileWriterSize(writer);
       return this.withMem(size, (ptr) => {
         this.m.PDFiumExt_GetFileWriterData(writer, ptr, size);

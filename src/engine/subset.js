@@ -1,6 +1,8 @@
 // Subconjunto de una fuente TrueType con HarfBuzz (harfbuzz-subset.wasm de harfbuzzjs, MIT): solo las letras
 // que se usan, para incrustar en el PDF unos pocos KB en vez de la fuente entera. Sin DOM: worker y Node.
 
+import { t } from '../i18n/index.js';
+
 /** Crea el subconjuntador a partir de los bytes del wasm. → (fontBytes, text) => Uint8Array */
 export async function createSubsetter(wasmBytes) {
   const { instance } = await WebAssembly.instantiate(wasmBytes);
@@ -17,7 +19,7 @@ export async function createSubsetter(wasmBytes) {
       for (const ch of new Set(text)) hb.hb_set_add(set, ch.codePointAt(0));
       hb.hb_set_add(set, 0x20); // el espacio siempre
       const sub = hb.hb_subset_or_fail(face, input);
-      if (!sub) throw new Error('No se pudo preparar la fuente.');
+      if (!sub) throw new Error(t('engine.fontPrepareFailed'));
       const out = hb.hb_face_reference_blob(sub);
       const off = hb.hb_blob_get_data(out, 0);
       const len = hb.hb_blob_get_length(out);

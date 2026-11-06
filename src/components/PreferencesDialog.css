@@ -1,0 +1,20 @@
+/*
+ * Preferencias (src/components/PreferencesDialog.jsx). Prefijo cfg-.
+ * La ventana es v-dialog de spider-ui; aquí solo la disposición de algunos campos.
+ */
+
+.v-dialog .v-card__body > .v-field:last-child { margin-bottom: 0; }
+
+/* Carpeta: campo de solo lectura + botones en la misma línea; en pantallas estrechas, los botones debajo. */
+.cfg-row { display: flex; gap: 8px; }
+.cfg-path { flex: 1; min-width: 0; text-overflow: ellipsis; }
+@media (max-width: 480px) {
+  .cfg-row { flex-wrap: wrap; }
+  .cfg-path { flex-basis: 100%; }
+}
+
+.cfg-fieldset { border: 0; padding: 0; min-width: 0; }
+.cfg-options { display: flex; flex-wrap: wrap; gap: 16px; }
+.cfg-option { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; }
+.cfg-option input { margin: 0; accent-color: var(--sp-text-primary); }
+.cfg-option input:focus-visible { outline: 2px solid var(--sp-focus); outline-offset: 2px; }

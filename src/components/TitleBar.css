@@ -1,0 +1,7 @@
+/*
+ * Barra de título y menús de Windows/Linux (src/components/TitleBar.jsx). Prefijo tb-.
+ * Colores, radios y tipografía de spider-ui (v-btn-ghost, v-menu); aquí solo medidas.
+ */
+.tb-top { font-weight: 400; padding: 0 10px; }
+.tb-item { gap: 24px; white-space: nowrap; }
+.tb-item[aria-disabled="true"] { cursor: default; }

@@ -9,6 +9,7 @@ import { AnnotShape, NOTE_PT, boxPx, pageTurn } from './AnnotShapes.jsx';
 import TextLayer from './TextLayer.jsx';
 import TextBoxes from './TextBoxes.jsx';
 import { caretAt, charIndexAt, wordAt, lineRects } from '../textGeom.js';
+import { useT } from '../i18n/index.js';
 
 const clamp01 = (n) => Math.min(1, Math.max(0, n));
 const RESIZABLE = new Set(['image', 'redact', 'highlight', 'textbox']);
@@ -25,8 +26,9 @@ const NO_CONFLICTS = { annots: new Set(), texts: new Set() };
 export default function PageOverlay({
   page, cssWidth, tool, color, annotSel, conflicts = NO_CONFLICTS, dispatch,
   textSel, onTextSel, searchHits = [], currentHit = null, scanned = false, canFill = true,
-  editingBox = null, onEditBox, onDoneBox, onCreateTextBox,
+  editingBox = null, onEditBox, onDoneBox, onCreateTextBox, onLink,
 }) {
+  const t = useT();
   const R = pageTurn(page);
   const { w: wPts, h: hPts } = displaySize(page);
   const W = cssWidth;
@@ -44,6 +46,9 @@ export default function PageOverlay({
   charsRef.current = chars;
   const rootRef = useRef(null);
   const [textCursor, setTextCursor] = useState(false);
+  // Enlaces del PDF ([{ rect, pageIndex } | { rect, uri }]): se piden con el texto, al acercarse a la vista.
+  const [links, setLinks] = useState([]);
+  const [linkCursor, setLinkCursor] = useState(false);
   const loadChars = () => {
     if (charsRef.current) return Promise.resolve(charsRef.current);
     return pdf.pageChars(page).then((c) => { charsRef.current = c; setChars(c); return c; }).catch(() => null);
@@ -55,6 +60,22 @@ export default function PageOverlay({
     if (rootRef.current) io.observe(rootRef.current);
     return () => io.disconnect();
   }, [page.docId, page.index, page.ocr]); // page.ocr: al reconocer el texto (OCR) se puede seleccionar
+
+  useEffect(() => {
+    let alive = true;
+    setLinks([]);
+    const io = new IntersectionObserver(([e]) => {
+      if (!e.isIntersecting) return;
+      io.disconnect();
+      pdf.links(page.docId, page.index).then((l) => alive && setLinks(l)).catch(() => {});
+    }, { rootMargin: '600px' });
+    if (rootRef.current) io.observe(rootRef.current);
+    return () => { alive = false; io.disconnect(); };
+  }, [page.docId, page.index]);
+  const linkAt = (p) => {
+    const [u, v] = fromDisplay(...p, R);
+    return links.find(({ rect: [u0, v0, u1, v1] }) => u >= u0 && u <= u1 && v >= v0 && v <= v1) ?? null;
+  };
 
   useEffect(() => {
     if (!page.hasForm) return undefined;
@@ -79,6 +100,14 @@ export default function PageOverlay({
     const p = pt(e);
     if (tool === 'select') {
       if (annotSel) dispatch({ type: 'selectAnnot' });
+      // Sobre un enlace: se sigue al soltar si no se ha arrastrado.
+      const link = linkAt(p);
+      if (link) {
+        e.preventDefault();
+        try { svgRef.current.setPointerCapture(e.pointerId); } catch { /* puntero ya liberado */ }
+        drag.current = { mode: 'link', link, from: [e.clientX, e.clientY] };
+        return;
+      }
       const start = fromDisplay(...p, R);
       const c = charsRef.current;
       if (!c) {
@@ -147,13 +176,18 @@ export default function PageOverlay({
   const onMove = (e) => {
     const g = drag.current;
     if (!g) {
-      // Cursor de texto sobre las letras (solo con Seleccionar).
-      if (tool === 'select' && chars) {
-        const over = charIndexAt(chars.boxes, chars.generated, ...fromDisplay(...pt(e), R)) >= 0;
-        if (over !== textCursor) setTextCursor(over);
+      // Cursor de mano sobre los enlaces y de texto sobre las letras (solo con Seleccionar).
+      if (tool === 'select') {
+        const onLinkNow = !!linkAt(pt(e));
+        if (onLinkNow !== linkCursor) setLinkCursor(onLinkNow);
+        if (chars) {
+          const over = charIndexAt(chars.boxes, chars.generated, ...fromDisplay(...pt(e), R)) >= 0;
+          if (over !== textCursor) setTextCursor(over);
+        }
       }
       return;
     }
+    if (g.mode === 'link') return;
     const p = pt(e);
     if (g.mode === 'textsel') {
       const c = charsRef.current;
@@ -203,6 +237,10 @@ export default function PageOverlay({
     drag.current = null;
     if (!g) return;
     if (g.mode === 'textsel') return;
+    if (g.mode === 'link') {
+      if (e?.type === 'pointerup' && Math.hypot(e.clientX - g.from[0], e.clientY - g.from[1]) < 5) { onTextSel?.(null); onLink?.(g.link); }
+      return;
+    }
     const draft = g.draft;
     if (rectTool(g.mode) && draft) {
       const disp = { x: Math.min(draft.x0, draft.x1), y: Math.min(draft.y0, draft.y1), w: Math.abs(draft.x1 - draft.x0), h: Math.abs(draft.y1 - draft.y0) };
@@ -259,7 +297,7 @@ export default function PageOverlay({
   return (
     <div
       className="absolute inset-0"
-      style={{ cursor: tool === 'textbox' ? 'text' : drawing ? 'crosshair' : textCursor ? 'text' : undefined }}
+      style={{ cursor: tool === 'textbox' ? 'text' : drawing ? 'crosshair' : tool === 'select' && linkCursor ? 'pointer' : textCursor ? 'text' : undefined }}
       ref={rootRef}
       onPointerEnter={() => { loadChars(); }}
     >
@@ -293,8 +331,8 @@ export default function PageOverlay({
           <button
             key={a.id}
             type="button"
-            aria-label={a.text ? `Nota: ${a.text}` : 'Nota vacía'}
-            title={a.text || 'Nota'}
+            aria-label={a.text ? t('reader.overlay.note', { text: a.text }) : t('reader.overlay.noteEmpty')}
+            title={a.text || t('reader.overlay.noteTitle')}
             onPointerDown={(e) => onAnnotDown(e, a)}
             onPointerMove={onMove}
             onPointerUp={onUp}
@@ -320,6 +358,23 @@ export default function PageOverlay({
 
       {/* 4. Texto existente (editado) */}
       <TextLayer page={page} W={W} H={H} R={R} pxPerPt={pxPerPt} active={tool === 'text'} conflicts={conflicts.texts} dispatch={dispatch} />
+
+      {/* 4b. Enlaces: el ratón los sigue desde el SVG (clic sin arrastrar); estos botones son para el teclado. */}
+      {tool === 'select' && links.map((l, i) => {
+        const d = box(l.rect);
+        return (
+          <button
+            key={i}
+            type="button"
+            aria-label={l.uri ? t('reader.overlay.linkWeb', { uri: l.uri }) : t('reader.overlay.linkPage', { n: l.pageIndex + 1 })}
+            title={l.uri ?? undefined}
+            onClick={() => onLink?.(l)}
+            data-link={l.uri ? 'web' : 'page'}
+            className="pdf-link absolute rounded-sm outline-none focus-visible:outline-2 focus-visible:outline-accent"
+            style={{ left: d.x, top: d.y, width: d.w, height: d.h, pointerEvents: 'none' }}
+          />
+        );
+      })}
 
       {/* 5. Campos de formulario: no estorban mientras se dibuja. */}
       {fields.map((f) => (
@@ -402,7 +457,7 @@ export default function PageOverlay({
 
       {scanned && (
         <span className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 whitespace-nowrap rounded-lg border border-line bg-panel px-2.5 py-1 text-xs text-muted shadow-card">
-          Esta página es una imagen; la búsqueda necesitará OCR
+          {t('reader.overlay.scanned')}
         </span>
       )}
 
@@ -412,15 +467,15 @@ export default function PageOverlay({
           className="pointer-events-none absolute whitespace-nowrap rounded-md border border-danger/30 bg-danger-soft px-1.5 py-0.5 text-[11px] font-medium leading-4 text-danger-ink shadow-card"
           style={{ left: selBox.x - 1.5, top: selBox.y > 26 ? selBox.y - 24 : selBox.y + selBox.h + 6 }}
         >
-          Se borrará al guardar
+          {t('reader.overlay.redactLabel')}
         </span>
       )}
       {/* Asa para mover el cuadro de texto mientras se escribe (con «Texto nuevo» el clic edita). */}
       {selAnnot?.type === 'textbox' && tool === 'textbox' && (
         <button
           type="button"
-          aria-label="Mover el cuadro de texto"
-          title="Arrastra para mover el cuadro"
+          aria-label={t('reader.overlay.moveBox')}
+          title={t('reader.overlay.moveBoxHint')}
           onPointerDown={(e) => onAnnotDown(e, selAnnot, 'move')}
           onPointerMove={onMove}
           onPointerUp={onUp}
@@ -440,6 +495,7 @@ export default function PageOverlay({
 }
 
 function NoteEditor({ annot, pageKey, dispatch, alignRight, offset }) {
+  const t = useT();
   const ref = useRef(null);
   useEffect(() => { if (!annot.text) ref.current?.focus(); }, []); // nota nueva: escribir directamente
   return (
@@ -448,13 +504,13 @@ function NoteEditor({ annot, pageKey, dispatch, alignRight, offset }) {
       style={{ top: offset + 6, ...(alignRight ? { right: 0 } : { left: 0 }) }}
       onPointerDown={(e) => e.stopPropagation()}
     >
-      <label className="sr-only" htmlFor={`note-${annot.id}`}>Texto de la nota</label>
+      <label className="sr-only" htmlFor={`note-${annot.id}`}>{t('reader.overlay.noteText')}</label>
       <textarea
         id={`note-${annot.id}`}
         ref={ref}
         rows={4}
         value={annot.text ?? ''}
-        placeholder="Escribe la nota…"
+        placeholder={t('reader.overlay.notePlaceholder')}
         onChange={(e) => dispatch({ type: 'updateAnnot', key: pageKey, id: annot.id, changes: { text: e.target.value }, group: true })}
         onBlur={() => dispatch({ type: 'endGroup' })}
         onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); dispatch({ type: 'selectAnnot' }); } }}
@@ -467,7 +523,7 @@ function NoteEditor({ annot, pageKey, dispatch, alignRight, offset }) {
           className="flex h-8 items-center gap-2 rounded-lg px-2.5 text-sm font-medium text-danger transition-colors hover:bg-danger-soft"
         >
           <Trash2 size={16} strokeWidth={1.75} />
-          Eliminar nota
+          {t('reader.overlay.deleteNote')}
         </button>
       </div>
     </div>

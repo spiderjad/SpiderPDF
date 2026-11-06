@@ -1,6 +1,8 @@
 // Puente entre la interfaz y el worker de PDFium, con caché de renders.
 import { ocrChars } from '../ocr/layer.js';
 import { findMatches, lineRects } from '../textGeom.js';
+import { outlineForSave } from '../outline.js';
+import { t } from '../i18n/index.js';
 
 const worker = new Worker(new URL('./pdf.worker.js', import.meta.url), { type: 'module' });
 const pending = new Map();
@@ -44,6 +46,8 @@ async function toEngineRef({ docId, index, rot, annots, fields, textEdits, sourc
 export const pdf = {
   /** Promesa que se cumple cuando el motor PDFium está cargado. */
   ready: () => call('init', {}),
+  /** Idioma de los errores y avisos del motor (el mismo que la interfaz). */
+  setLang: (lang, languages) => call('setLang', { lang, languages }),
 
   /** bytes: Uint8Array. Se copia antes de transferirlo al worker. */
   open(bytes, password = '', known) {
@@ -57,21 +61,21 @@ export const pdf = {
   },
   /**
    * Guarda el documento. pages: páginas del estado ({ docId, index, rot, annots, fields, textEdits }).
-   * Devuelve { bytes, warnings } (avisos de la redacción).
+   * outline: índice creado en la app (state.outline), que sustituye al de los PDF. Devuelve { bytes, warnings }.
    * Las imágenes (firmas) se convierten aquí a RGBA: el worker no decodifica imágenes.
    */
-  async compose(pages, onProgress, { security, hidden } = {}) {
+  async compose(pages, onProgress, { security, hidden, outline } = {}) {
     const refs = await Promise.all(pages.map(toEngineRef));
-    return job('compose', { refs, security, hidden }, [], onProgress).promise;
+    return job('compose', { refs, security, hidden, outline: outlineForSave(pages, outline) }, [], onProgress).promise;
   },
 
   /**
    * «Reducir tamaño» del documento tal como está. level: high | balanced | small. → { promise, cancel };
    * promise → { bytes, composed (tamaño sin reducir), images, reduced, warnings }. onProgress({ phase, done, total }).
    */
-  async reduceJob(pages, { level, security, docIds }, onProgress) {
+  async reduceJob(pages, { level, security, docIds, outline }, onProgress) {
     const refs = await Promise.all(pages.map(toEngineRef));
-    return job('reduce', { refs, level, security, docIds }, [], onProgress);
+    return job('reduce', { refs, level, security, docIds, outline: outlineForSave(pages, outline) }, [], onProgress);
   },
 
   /** Desbloquea los permisos con la contraseña de propietario. → { ...security, unlocked } */
@@ -176,8 +180,23 @@ export const pdf = {
     return outlineCache.get(key);
   },
 
+  /** Líneas rectas dibujadas de una página ([[u0, v0, u1, v1]]), para detectar tablas. Sin caché. */
+  /** Aspecto de cada carácter (tamaño, negrita/cursiva, color, fuente), mismos índices que textChars. */
+  charStyles: (docId, index) => (docId == null ? Promise.resolve(null) : call('charStyles', { docId, index })),
+  /** Imágenes de una página ya codificadas: [{ rect, width, height, type: 'png' | 'jpg', bytes }]. */
+  pageImages: (docId, index) => (docId == null ? Promise.resolve([]) : call('pageImages', { docId, index })),
+  rules: (docId, index) => (docId == null ? Promise.resolve([]) : call('rules', { docId, index })),
+
+  /** Enlaces de una página ([{ rect, pageIndex } | { rect, uri }]), en caché. */
+  links(docId, index) {
+    if (docId == null) return Promise.resolve([]);
+    const key = `${docId}:${index}`;
+    if (!linkCache.has(key)) linkCache.set(key, call('links', { docId, index }).catch(() => []));
+    return linkCache.get(key);
+  },
+
   close(docId) {
-    for (const c of [fieldCache, runCache, charCache, outlineCache, fontDataCache, scanCache]) for (const key of c.keys()) if (key.startsWith(`${docId}:`)) c.delete(key);
+    for (const c of [fieldCache, runCache, charCache, outlineCache, linkCache, fontDataCache, scanCache]) for (const key of c.keys()) if (key.startsWith(`${docId}:`)) c.delete(key);
     return call('close', { docId });
   },
 };
@@ -186,6 +205,7 @@ const fieldCache = new Map(); // "docId:index" -> Promise<campos>
 const runCache = new Map();   // "docId:index" -> Promise<bloques de texto>
 const charCache = new Map();  // "docId:index" -> Promise<texto con cajas por carácter>
 const outlineCache = new Map(); // "docId:" -> Promise<índice>
+const linkCache = new Map(); // "docId:index" -> Promise<enlaces>
 const fontDataCache = new Map();
 const scanCache = new Map(); // "docId:" -> Promise<índices de páginas escaneadas>
 const ocrCache = new WeakMap(); // palabras del OCR -> caracteres (se rehacen si cambian)
@@ -242,7 +262,7 @@ async function renderCreated(page, scale) {
 /** data URL → Blob sin fetch (la CSP solo permite connect-src 'self'). */
 function dataUrlToBlob(url) {
   const m = /^data:([^;,]+)?(;base64)?,(.*)$/s.exec(url ?? '');
-  if (!m) throw new Error('La imagen de la firma no es válida.');
+  if (!m) throw new Error(t('engine.badSignatureImage'));
   const bytes = m[2] ? Uint8Array.from(atob(m[3]), (c) => c.charCodeAt(0)) : new TextEncoder().encode(decodeURIComponent(m[3]));
   return new Blob([bytes], { type: m[1] || 'application/octet-stream' });
 }

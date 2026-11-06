@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
-import { Printer, ShieldAlert, TriangleAlert } from 'lucide-react';
+import { Printer, ShieldAlert, TriangleAlert, ExternalLink } from 'lucide-react';
+import { useT } from '../i18n/index.js';
 
 /**
  * Confirmación con varias salidas (window.confirm solo tiene Aceptar/Cancelar).
@@ -8,6 +9,7 @@ import { Printer, ShieldAlert, TriangleAlert } from 'lucide-react';
  * Accesible: aria-modal, foco atrapado y devuelto al cerrar.
  */
 export default function ConfirmDialog({ title, message, icon = 'alert', actions, onClose }) {
+  const t = useT();
   const ref = useRef(null);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
@@ -28,10 +30,10 @@ export default function ConfirmDialog({ title, message, icon = 'alert', actions,
     return () => { window.removeEventListener('keydown', onKey, true); prev?.focus?.(); };
   }, []);
 
-  const Icon = icon === 'signed' ? ShieldAlert : icon === 'print' ? Printer : TriangleAlert;
-  const iconTone = icon === 'print' ? 'bg-accent-soft text-accent-ink' : 'bg-danger-soft text-danger-ink';
+  const Icon = icon === 'signed' ? ShieldAlert : icon === 'print' ? Printer : icon === 'link' ? ExternalLink : TriangleAlert;
+  const iconTone = icon === 'print' || icon === 'link' ? 'bg-accent-soft text-accent-ink' : 'bg-danger-soft text-danger-ink';
   const style = {
-    primary: 'bg-accent text-on-accent hover:bg-accent/90',
+    primary: 'bg-inverse text-on-inverse hover:bg-inverse-hover',
     danger: 'border border-danger/40 text-danger-ink hover:bg-danger-soft',
     ghost: 'hover:bg-hover',
   };
@@ -58,7 +60,7 @@ export default function ConfirmDialog({ title, message, icon = 'alert', actions,
         </div>
         <div className="mt-5 flex flex-wrap justify-end gap-2">
           <button type="button" onClick={() => onClose(null)} className={`h-9 rounded-lg px-3.5 text-sm font-medium transition-[background-color,scale] active:scale-[0.98] ${style.ghost}`}>
-            Cancelar
+            {t('dialogs.common.cancel')}
           </button>
           {[...actions].reverse().map((a, i) => (
             <button

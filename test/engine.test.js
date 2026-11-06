@@ -7,11 +7,13 @@ import { fontFile, parseFamilyKey, defaultStyle } from '../src/textbox.js';
 import { createRequire } from 'node:module';
 import assert from 'node:assert/strict';
 import { init } from '@embedpdf/pdfium';
-import { PDFDocument, PDFName, PDFHexString, PDFString, StandardFonts, rgb, degrees, beginText, endText, setFontAndSize, setTextMatrix, showText } from 'pdf-lib';
+import { PDFDocument, PDFName, PDFDict, PDFNumber, PDFHexString, PDFString, StandardFonts, rgb, degrees, beginText, endText, setFontAndSize, setTextMatrix, showText } from 'pdf-lib';
 import { PdfCore } from '../src/engine/pdfium-core.js';
+import { fontTraits } from '../src/engine/fontTraits.js';
 import { rectToDisplay } from '../src/geometry.js';
 import { parsePdf, unreachable, scanWord, pngRGB } from './forensics.js';
-import { contrato, indice } from './make-fixtures.js';
+import { contrato, indice, indiceImpreso, enlaces, ENLACE_WEB, factura, albaranLineas, informe, INFORME } from './make-fixtures.js';
+import { textLines, findTocPages, tocEntries, guessOffset, targetIndex, treeFromLevels } from '../src/toc.js';
 import { signPdf, selfSignedCert, signatureIntact, certIsSelfSigned, byteRange } from './sign-pdf.js';
 import { createQpdf, finishWithQpdf } from '../src/engine/qpdf.js';
 import createQpdfModule from '../src/engine/qpdf/qpdf.mjs';
@@ -1415,6 +1417,178 @@ console.log('  OCR (texto reconocido en páginas escaneadas):');
   } finally {
     await worker.terminate();
   }
+}
+
+console.log('  índice impreso → marcadores y enlaces:');
+{
+  const D = core.open(await indiceImpreso());
+  const n = D.pages.length;
+  const lines = [...Array(n).keys()].map((i) => textLines(core.textChars(D.docId, i)));
+  const tocPages = findTocPages(lines);
+  const entries = tocPages.flatMap((p) => tocEntries(lines[p]).entries);
+  const { offset } = guessOffset(entries, [...Array(n).keys()].map((i) => core.pageText(D.docId, i)), tocPages);
+  t('  · la página 3 es el índice; 12 entradas y desfase +1 (portada sin numerar)', () => {
+    assert.deepEqual(tocPages, [2]);
+    assert.equal(entries.length, 12);
+    assert.equal(offset, 1);
+    assert.equal(entries[6].title, '2.3 TAREAS EXCLUIDAS DEL ALCANCE DEL PROYECTO Y OTRAS CONSIDERACIONES');
+  });
+  const tree = treeFromLevels(entries.map((e) => ({ title: e.title, level: e.level, pos: targetIndex(e, offset) })));
+  const forSave = (nodes) => nodes.map((x) => ({ title: x.title, pos: x.pos, children: forSave(x.children) }));
+  const refs = D.pages.map((_, i) => ({ docId: D.docId, index: i, rot: 0 }));
+  const saved = core.compose(refs, null, { outline: forSave(tree) });
+  const titles = (nodes) => nodes.map((x) => [x.title, x.pageIndex, titles(x.children)]);
+  t('  · al guardar, los marcadores quedan en el PDF con su jerarquía y su página real', () => {
+    const R = core.open(saved);
+    const bm = core.bookmarks(R.docId);
+    assert.equal(bm.length, 7);
+    assert.deepEqual(titles(bm)[3], ['2 DESCRIPCIÓN Y ALCANCE', 3, [
+      ['2.1 ESTRUCTURA ORGANIZATIVA', 3, []], ['2.2 FLUJO DE TRASLADO', 4, []],
+      ['2.3 TAREAS EXCLUIDAS DEL ALCANCE DEL PROYECTO Y OTRAS CONSIDERACIONES', 5, []]]]);
+    assert.deepEqual(titles(bm).at(-1), ['5 CONDICIONES', 7, []]);
+    core.close(R.docId);
+  });
+  const indiceBytes = await indice();
+  t('  · el índice creado sustituye al que ya tuviera; pos -1 = marcador sin destino', () => {
+    const I = core.open(indiceBytes);
+    const out2 = core.compose(I.pages.map((_, i) => ({ docId: I.docId, index: i, rot: 0 })), null, {
+      outline: [{ title: 'Solo', pos: 2, children: [{ title: 'Sin página', pos: -1, children: [] }] }],
+    });
+    const R = core.open(out2);
+    assert.deepEqual(titles(core.bookmarks(R.docId)), [['Solo', 2, [['Sin página', -1, []]]]]);
+    core.close(R.docId);
+    core.close(I.docId);
+  });
+  core.close(D.docId);
+
+  const E = core.open(await enlaces());
+  t('  · links: internos con /Dest y con acción «Ir a», y web; en fracciones de la página', () => {
+    const l = core.links(E.docId, 0);
+    assert.equal(l.length, 3);
+    assert.equal(l[0].pageIndex, 1);
+    assert.equal(l[1].pageIndex, 2);
+    assert.equal(l[2].uri, ENLACE_WEB);
+    const [u0, v0, u1, v1] = l[0].rect;
+    assert.ok(u0 > 0.09 && u0 < 0.11 && u1 > 0.2 && u1 < 0.5, `rect ${l[0].rect}`);
+    assert.ok(v0 > 0.14 && v1 < 0.18 && v1 > v0, `rect ${l[0].rect}`);
+    assert.deepEqual(core.links(E.docId, 1), []);
+  });
+  core.close(E.docId);
+
+  const F = core.open(await factura());
+  const A = core.open(await albaranLineas());
+  t('  · rules: las líneas de la rejilla de la factura (sin las del fondo de la cabecera); el albarán no tiene', () => {
+    const r = core.rules(F.docId, 0);
+    const horiz = r.filter(([, v0, , v1]) => Math.abs(v1 - v0) < 1e-3);
+    const vert = r.filter(([u0, , u1]) => Math.abs(u1 - u0) < 1e-3);
+    assert.equal(horiz.length, 10); // 9 filas = 10 líneas
+    assert.equal(vert.length, 7);   // 6 columnas = 7 líneas
+    assert.equal(r.length, 17);     // el rectángulo de fondo de la cabecera (solo relleno) no cuenta
+    assert.ok(horiz.every(([u0, , u1]) => Math.abs(u0 - 50 / 595) < 0.002 && Math.abs(u1 - 545 / 595) < 0.002));
+    assert.deepEqual(core.rules(A.docId, 0), []);
+  });
+  core.close(F.docId);
+  core.close(A.docId);
+
+  const orig = new Uint8Array(await readFile('test/fixtures/firmado.pdf'));
+  const S = core.open(orig);
+  const inc = core.compose(S.pages.map((_, i) => ({ docId: S.docId, index: i, rot: 0 })), null, {
+    outline: [{ title: 'Condiciones', pos: 1, children: [] }],
+  });
+  t('  · en un PDF firmado, el índice va en una revisión incremental y la firma sigue verificando', () => {
+    assert.equal(core.incremental, true);
+    assert.ok(Buffer.from(inc.subarray(0, orig.length)).equals(Buffer.from(orig)));
+    assert.equal(signatureIntact(inc), true);
+    const R = core.open(inc);
+    assert.deepEqual(titles(core.bookmarks(R.docId)), [['Condiciones', 1, []]]);
+    core.close(R.docId);
+  });
+  core.close(S.docId);
+}
+
+console.log('  exportar a Word: aspecto de las letras e imágenes:');
+{
+  const D = core.open(await informe());
+  const c = core.textChars(D.docId, 0);
+  const st = core.charStyles(D.docId, 0);
+  const at = (s) => c.text.indexOf(s);
+  t('  · charStyles: un valor por carácter de textChars', () => {
+    assert.equal(st.size.length, c.text.length);
+    assert.equal(st.flags.length, c.text.length);
+  });
+  t('  · tamaño, negrita y color de cada letra (título 22 pt negrita, cuerpo 10,5, sección azul)', () => {
+    const ti = at(INFORME.titulo);
+    assert.ok(Math.abs(st.size[ti] - 22) < 0.1);
+    assert.equal(st.flags[ti] & 1, 1);
+    assert.match(st.fonts[st.font[ti]], /Helvetica-Bold/);
+    const body = at('El volumen');
+    assert.ok(Math.abs(st.size[body] - 10.5) < 0.1);
+    assert.equal(st.flags[body] & 1, 0);
+    assert.equal(st.flags[at(INFORME.negrita)] & 1, 1, 'la negrita dentro del párrafo');
+    const h = at(INFORME.h1[0]);
+    assert.equal(st.color[h], (Math.round(0.1 * 255) << 16) | (Math.round(0.25 * 255) << 8) | Math.round(0.55 * 255));
+  });
+  t('  · PDFium marca con \\u0002 la palabra partida con guion al final de línea', () => {
+    const c2 = core.textChars(D.docId, 1);
+    assert.ok(c2.text.includes(`${INFORME.partida[0]}\u0002${INFORME.partida[1]}`));
+  });
+  const imgs = core.pageImages(D.docId, 0);
+  t('  · pageImages: el logo con transparencia (con su alfa, a su resolución) y la foto opaca, de arriba abajo', () => {
+    assert.equal(imgs.length, 2);
+    const [logo, foto] = imgs;
+    assert.equal(logo.alpha, true);
+    assert.equal(logo.width, 80); // su resolución propia, no 1 píxel por punto (55)
+    const px = (im, x, y) => [...im.data.subarray((y * im.width + x) * 4, (y * im.width + x) * 4 + 4)];
+    assert.equal(px(logo, 1, 1)[3], 0, 'esquina transparente');
+    const mid = px(logo, 40, 40);
+    assert.ok(mid[3] === 255 && mid[2] > 150 && mid[0] < 80, `centro azul opaco: ${mid}`);
+    assert.equal(foto.alpha, false);
+    assert.equal(foto.width, 240);
+    assert.ok(Math.abs(foto.rect[0] - 60 / 595) < 0.002 && Math.abs((foto.rect[2] - foto.rect[0]) * 595 - 240) < 0.5);
+    assert.ok(logo.rect[1] < foto.rect[1]);
+  });
+  t('  · las imágenes enormes se reducen a 200 ppp de su tamaño en la página', () => {
+    const big = core.pageImages(D.docId, 0, { maxDpi: 72 });
+    assert.equal(big[1].width, 240); // 240 pt a 72 ppp = 240 px: igual
+    const small = core.pageImages(D.docId, 0, { maxDpi: 36 });
+    assert.equal(small[1].width, 120);
+  });
+  core.close(D.docId);
+}
+
+console.log('  negrita y cursiva leídas de la propia fuente (PDF con nombres genéricos «F1»):');
+{
+  const ttf = (w) => new Uint8Array(readFileSyncSafe(`node_modules/@expo-google-fonts/inter/${w}/Inter_${w}.ttf`));
+  t('  · fontTraits: peso y estilo del archivo de la fuente (OS/2 y nombre)', () => {
+    assert.deepEqual(fontTraits(ttf('400Regular')), { bold: false, italic: false, weight: 400, name: 'Inter Regular' });
+    assert.equal(fontTraits(ttf('700Bold')).bold, true);
+    assert.equal(fontTraits(ttf('700Bold')).weight, 700);
+    assert.equal(fontTraits(ttf('400Regular_Italic')).italic, true);
+    assert.equal(fontTraits(new Uint8Array([1, 2, 3])), null);
+  });
+  // Como los PDF de Chrome o de algunos Word: fuentes incrustadas que se llaman «F1», «F2» y sin peso en el descriptor.
+  const doc = await PDFDocument.create();
+  doc.registerFontkit(fontkit);
+  const reg = await doc.embedFont(ttf('400Regular'), { subset: true });
+  const bold = await doc.embedFont(ttf('700Bold'), { subset: true });
+  const p = doc.addPage([595, 842]);
+  p.drawText('Texto normal', { x: 50, y: 760, size: 11, font: reg });
+  p.drawText('Texto en negrita', { x: 50, y: 740, size: 11, font: bold });
+  let k = 0;
+  for (const [, obj] of doc.context.enumerateIndirectObjects()) {
+    if (!(obj instanceof PDFDict)) continue;
+    if (obj.get(PDFName.of('BaseFont'))) obj.set(PDFName.of('BaseFont'), PDFName.of(`F${++k}`));
+    if (obj.get(PDFName.of('FontName'))) { obj.set(PDFName.of('FontName'), PDFName.of(`F${++k}`)); obj.delete(PDFName.of('FontWeight')); obj.set(PDFName.of('Flags'), PDFNumber.of(4)); }
+  }
+  const G = core.open(await doc.save());
+  t('  · charStyles: la negrita sale de la fuente aunque el PDF la llame «F3» y no diga su peso', () => {
+    const c = core.textChars(G.docId, 0);
+    const st = core.charStyles(G.docId, 0);
+    assert.equal(st.flags[c.text.indexOf('Texto normal')] & 1, 0);
+    assert.equal(st.flags[c.text.indexOf('Texto en negrita')] & 1, 1);
+    assert.ok(Math.abs(st.size[c.text.indexOf('Texto normal')] - 11) < 0.05);
+  });
+  core.close(G.docId);
 }
 
 await mkdir('test/out', { recursive: true });

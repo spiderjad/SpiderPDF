@@ -2,13 +2,14 @@
 // PDF. Puro: se prueba en Node (test/insert.test.js). Las páginas son las mismas que «Insertar página en blanco»
 // (docId: null); al guardar, compose() parte de FPDF_CreateNewDocument.
 import { blankPage } from './insertPages.js';
+import { t } from './i18n/index.js';
 
 const MM = 72 / 25.4;
 
 /** Tamaños de página, en puntos y en vertical. */
 export const PAGE_SIZES = {
   A4: { label: 'A4', hint: '210 × 297 mm', width: 210 * MM, height: 297 * MM },
-  Letter: { label: 'Carta', hint: '216 × 279 mm', width: 612, height: 792 },
+  Letter: { get label() { return t('dialogs.paper.letter'); }, hint: '216 × 279 mm', width: 612, height: 792 },
   A3: { label: 'A3', hint: '297 × 420 mm', width: 297 * MM, height: 420 * MM },
 };
 

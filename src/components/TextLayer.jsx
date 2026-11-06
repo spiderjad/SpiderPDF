@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { pdf } from '../engine/client.js';
 import { boxPx } from './AnnotShapes.jsx';
 import { toDisplay } from '../geometry.js';
+import { useT } from '../i18n/index.js';
 
 /** Familia CSS parecida a la fuente del PDF (solo para la vista previa; al guardar se usa una estándar). */
 function cssFont(name = '') {
@@ -36,6 +37,7 @@ function placement(run, R, W, H) {
  * Los bloques cambiados se ven siempre (tapan el original hasta que se guarda).
  */
 export default function TextLayer({ page, W, H, R, pxPerPt, active, conflicts, dispatch }) {
+  const t = useT();
   const [runs, setRuns] = useState([]);
   const [editing, setEditing] = useState(null); // objIndex
   const edits = page.textEdits ?? {};
@@ -91,8 +93,8 @@ export default function TextLayer({ page, W, H, R, pxPerPt, active, conflicts, d
         {active && (
           <button
             type="button"
-            aria-label={`Editar el texto «${edit?.text ?? run.text}»`}
-            title="Editar este texto"
+            aria-label={t('reader.text.editAria', { text: edit?.text ?? run.text })}
+            title={t('reader.text.editTitle')}
             onClick={() => setEditing(run.objIndex)}
             className="absolute -inset-0.5 rounded-sm transition-colors hover:bg-[#7C3BED]/10 hover:ring-1 hover:ring-[#7C3BED]"
           />
@@ -103,6 +105,7 @@ export default function TextLayer({ page, W, H, R, pxPerPt, active, conflicts, d
 }
 
 function TextEditor({ initial, style, onCommit, onCancel }) {
+  const t = useT();
   const ref = useRef(null);
   const done = useRef(false);
   useEffect(() => { ref.current?.focus(); ref.current?.select(); }, []);
@@ -115,7 +118,7 @@ function TextEditor({ initial, style, onCommit, onCancel }) {
   return (
     <input
       ref={ref}
-      aria-label="Texto"
+      aria-label={t('reader.text.input')}
       defaultValue={initial}
       onKeyDown={(e) => {
         e.stopPropagation();

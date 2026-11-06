@@ -1,0 +1,19 @@
+/*
+ * Herramientas de Leer (src/components/AnnotToolbar.jsx). Prefijo at-.
+ * Colores y radios de spider-ui (v-toolbar--sub, v-btn-ghost, v-btn-icon); aquí solo medidas y la muestra de color.
+ */
+.at-bar { flex-shrink: 0; min-height: 44px; }
+.at-tool--compact { width: 32px; padding: 0; }
+.at-colors { gap: 4px; }
+.at-swatch { border-radius: 999px; }
+.at-swatch--on { box-shadow: 0 0 0 2px var(--sp-bg), 0 0 0 4px var(--sp-primary); }
+.at-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--sp-text-primary) 15%, transparent);
+}
+@media (max-width: 1100px) {
+  .at-label { display: none; }
+  .at-tool { width: 32px; padding: 0; }
+}

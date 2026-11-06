@@ -7,6 +7,7 @@ const fsSync = require('node:fs');
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
+const { T } = require('./i18n.cjs');
 
 const PREFIX = 'SpiderPDF-compartir-';
 
@@ -19,7 +20,7 @@ const AI = {
 /** Nombre de archivo seguro: sin rutas ni caracteres prohibidos en Windows, con .pdf al final. */
 function safeName(name) {
   let n = String(name ?? '').split(/[\\/]/).pop().replace(/[:*?"<>|\u0000-\u001f]+/g, ' ').replace(/\s+/g, ' ').trim().replace(/^\.+/, '');
-  n = n.replace(/\.pdf$/i, '').slice(0, 150).trim() || 'documento';
+  n = n.replace(/\.pdf$/i, '').slice(0, 150).trim() || T('share.defaultName');
   if (/^(con|prn|aux|nul|com\d|lpt\d)$/i.test(n)) n = `${n}_`;
   return `${n}.pdf`;
 }
@@ -36,12 +37,12 @@ function runHelper(app, args, { timeout = 0 } = {}) {
   return new Promise((resolve) => {
     const exe = helperPath(app);
     if (process.platform !== 'win32' || !fsSync.existsSync(exe)) {
-      resolve({ ok: false, code: 'sin-ayudante', message: 'Falta el ayudante de SpiderPDF. Vuelve a instalar la aplicación.' });
+      resolve({ ok: false, code: 'sin-ayudante', message: T('share.noHelper') });
       return;
     }
     execFile(exe, args, { windowsHide: true, timeout, encoding: 'utf8' }, (err, stdout) => {
       const line = String(stdout ?? '').trim().split('\n').pop();
-      try { resolve(JSON.parse(line)); } catch { resolve({ ok: false, code: 'ayudante', message: err?.message ?? 'El ayudante no respondió.' }); }
+      try { resolve(JSON.parse(line)); } catch { resolve({ ok: false, code: 'ayudante', message: err?.message ?? T('share.helperNoReply') }); }
     });
   });
 }
@@ -64,7 +65,7 @@ function createShare({ app, shell, log = () => {} }) {
 
   const file = (id) => {
     const f = files.get(id);
-    if (!f || !fsSync.existsSync(f)) throw new Error('El archivo para compartir ya no existe. Vuelve a prepararlo.');
+    if (!f || !fsSync.existsSync(f)) throw new Error(T('share.gone'));
     return f;
   };
 
@@ -80,7 +81,7 @@ function createShare({ app, shell, log = () => {} }) {
         const head = Buffer.alloc(5);
         const fd = await fs.open(from, 'r');
         try { await fd.read(head, 0, 5, 0); } finally { await fd.close(); }
-        if (head.toString('latin1') !== '%PDF-') throw new Error('El archivo original no es un PDF.');
+        if (head.toString('latin1') !== '%PDF-') throw new Error(T('share.notPdf'));
         await fs.copyFile(from, target);
       } else {
         await fs.writeFile(target, Buffer.from(bytes));

@@ -1,49 +1,35 @@
 @import "tailwindcss";
 @import "@fontsource-variable/inter/wght.css";
 
-/* Sistema de diseño de SpiderFolio (valores reescritos aquí, sin importar su preset AGPL):
-   neutros fríos (tono 240°), violeta como único acento, Inter, radios de 12 px.
-   Regla propia de SpiderPDF: el escritorio es gris y las páginas son lo único blanco puro. */
+/* Estilo: spider-ui (node_modules/spider-ui, guía en GUIDE.md), importado en src/main.jsx. Los nombres de siempre de
+   SpiderPDF (bg-panel, text-muted, bg-accent…) apuntan a sus tokens --sp-*: un solo sistema, con su modo oscuro.
+   El violeta (--sp-primary) queda para la selección, el estado y la inserción; los botones primarios son
+   --sp-inverse (negro en claro), como pide la guía. Regla propia: el escritorio (--sp-canvas) es gris y las páginas
+   son lo único blanco puro, también en oscuro. */
 :root {
-  color-scheme: light;
-  --desk: #E9E9EC;          /* fondo de trabajo (más oscuro que surface para que el papel destaque) */
-  --panel: #FFFFFF;         /* SpiderFolio background: barras, menús, toasts */
-  --hover: #F4F4F5;         /* SpiderFolio muted: hover y fondo de controles segmentados */
-  --ink: #121216;           /* SpiderFolio foreground */
-  --muted: #6C6C75;         /* SpiderFolio muted-foreground */
-  --muted-desk: #63636C;    /* texto secundario sobre el escritorio (AA: 4,9:1) */
-  --line: #E7E7E9;          /* SpiderFolio border */
-  --line-strong: #C4C4CA;   /* bordes discontinuos y barras de scroll sobre el escritorio */
-  --accent: #7C3BED;        /* SpiderFolio primary (violeta) */
-  --on-accent: #FFFFFF;     /* SpiderFolio primary-foreground */
-  --accent-soft: #F5F0FF;   /* SpiderFolio primary-soft */
-  --accent-ink: #6022C3;    /* SpiderFolio primary-soft-foreground */
-  --danger: #DC2828;
-  --danger-soft: #FEF1F1;
-  --danger-ink: #981B1B;
-  --overlay: #121216;       /* botones sobre la página (siempre oscuros, también en modo oscuro) */
-  --paper-shadow: 0 1px 2px hsl(240 10% 8% / 0.16), 0 4px 14px hsl(240 10% 8% / 0.09);
+  --desk: var(--sp-canvas);           /* fondo de trabajo bajo las páginas */
+  --panel: var(--sp-bg);              /* barras, menús, avisos */
+  --hover: var(--sp-bg-muted);        /* hover y fondo de controles segmentados */
+  --ink: var(--sp-text-primary);
+  --muted: var(--sp-text-secondary);
+  --muted-desk: var(--sp-text-secondary); /* AA también sobre --sp-canvas */
+  --line: var(--sp-border);
+  --line-strong: var(--sp-border-hover);
+  --accent: var(--sp-primary);        /* selección, foco de páginas, inserción */
+  --on-accent: var(--sp-on-primary);
+  --accent-soft: var(--sp-primary-light);
+  --accent-ink: var(--sp-primary-text);
+  --inverse: var(--sp-inverse);       /* botón primario */
+  --inverse-hover: var(--sp-inverse-hover);
+  --on-inverse: var(--sp-on-inverse);
+  --danger: var(--sp-danger);
+  --danger-soft: var(--sp-danger-light);
+  --danger-ink: var(--sp-danger-text);
+  --overlay: #0a0a0a;                 /* botones sobre la página: siempre oscuros (el papel siempre es blanco) */
+  --paper-shadow: 0 1px 2px rgb(0 0 0 / 0.14), 0 4px 14px rgb(0 0 0 / 0.08);
 }
 @media (prefers-color-scheme: dark) {
-  :root {
-    color-scheme: dark;
-    --desk: #1D1D20;        /* SpiderFolio muted (oscuro) */
-    --panel: #0E0E11;
-    --hover: #1D1D20;
-    --ink: #F5F5F5;
-    --muted: #9F9FA8;
-    --muted-desk: #9F9FA8;
-    --line: #27272B;
-    --line-strong: #3A3A40;
-    --accent: #9D68F3;
-    --on-accent: #0E0E11;
-    --accent-soft: #251839;
-    --accent-ink: #C19EFA;
-    --danger: #EF4343;
-    --danger-soft: #321515;
-    --danger-ink: #FCA6A6;
-    --paper-shadow: 0 1px 2px rgb(0 0 0 / 0.5), 0 6px 18px rgb(0 0 0 / 0.4);
-  }
+  :root { --paper-shadow: 0 1px 2px rgb(0 0 0 / 0.5), 0 6px 18px rgb(0 0 0 / 0.4); }
 }
 
 @theme inline {
@@ -63,17 +49,20 @@
   --color-danger-soft: var(--danger-soft);
   --color-danger-ink: var(--danger-ink);
   --color-overlay: var(--overlay);
-  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --color-inverse: var(--inverse);
+  --color-inverse-hover: var(--inverse-hover);
+  --color-on-inverse: var(--on-inverse);
+  --font-sans: var(--sp-font);
 
-  /* Radios de SpiderFolio (base 12 px) */
-  --radius-sm: 8px;
-  --radius-md: 10px;
-  --radius-lg: 12px;
-  --radius-xl: 14px;
-  --radius-2xl: 16px;
+  /* Radios y sombras de spider-ui: 6 px controles, 10 px tarjetas, menús y diálogos */
+  --radius-sm: 4px;
+  --radius-md: var(--sp-radius);
+  --radius-lg: var(--sp-radius);
+  --radius-xl: var(--sp-radius-lg);
+  --radius-2xl: var(--sp-radius-lg);
 
-  --shadow-card: 0 1px 2px 0 hsl(240 10% 8% / 0.04);
-  --shadow-pop: 0 12px 32px -12px hsl(240 10% 8% / 0.2), 0 2px 6px -2px hsl(240 10% 8% / 0.08);
+  --shadow-card: var(--sp-shadow);
+  --shadow-pop: var(--sp-shadow-md);
 
   /* Densidad compacta: texto de interfaz 14 px, secundario 13 px */
   --text-xs: 0.8125rem;
@@ -183,9 +172,9 @@ body {
 .no-spin { appearance: textfield; -moz-appearance: textfield; }
 .no-spin::-webkit-outer-spin-button, .no-spin::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 
-/* Foco de teclado: sólido (no al 40 % como en SpiderFolio) para que se vea también sobre el escritorio gris. */
+/* Foco de teclado: el de spider-ui (negro en claro, casi blanco en oscuro), sólido para que se vea también sobre el escritorio. */
 @layer base {
-  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  :focus-visible { outline: 2px solid var(--sp-focus); outline-offset: 2px; }
 }
 
 .desk-scroll { scrollbar-gutter: stable; }

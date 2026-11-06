@@ -7,7 +7,9 @@
  * En desarrollo la interfaz se recarga sola pero el proceso principal no (y el preload solo al recargar
  * la ventana): si no coinciden, la app pide reiniciarla en vez de fallar en silencio.
  */
-export const DESKTOP_API = 5;
+import { t } from './i18n/index.js';
+
+export const DESKTOP_API = 9;
 
 let webShare = null;
 const web = {
@@ -26,6 +28,9 @@ const web = {
   },
   async pendingFiles() { return []; },
   // En el navegador no hay diálogo: se descarga con el nombre propuesto.
+  // En el navegador no hay carpetas: Preferencias desactiva «Elegir…».
+  chooseFolder: undefined,
+  setLang() {},
   async chooseSavePath({ defaultPath } = {}) { return (defaultPath ?? 'documento.pdf').split(/[\\/]/).pop(); },
   async savePdf({ bytes, suggestedName }) {
     const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
@@ -36,10 +41,27 @@ const web = {
   },
   // La integridad de las firmas se comprueba en el proceso principal (node:crypto): en el navegador, no.
   async verifySignatures() { return null; },
+  // Enlaces web de un PDF (ya confirmados): en el navegador, en otra pestaña.
+  async openLink(url) {
+    const u = new URL(url);
+    if (!['http:', 'https:', 'mailto:'].includes(u.protocol)) return { ok: false, message: t('core.web.linkBlocked') };
+    window.open(u.href, '_blank', 'noopener');
+    return { ok: true };
+  },
+  // Exportar en el navegador: se descarga con el nombre propuesto (no se puede abrir después).
+  async exportSave({ bytes, defaultPath, kind }) {
+    const name = (defaultPath ?? `documento.${kind}`).split(/[\/]/).pop();
+    const type = kind === 'xlsx' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    const url = URL.createObjectURL(new Blob([bytes], { type }));
+    Object.assign(document.createElement('a'), { href: url, download: name }).click();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    return { path: null, name };
+  },
+  async exportOpen() { return { ok: false, message: t('core.web.exportOpen') }; },
   // Compartir en el navegador: solo se puede descargar la copia (sin portapapeles de archivos ni correo).
   async sharePrepare({ bytes, name }) { webShare = { bytes, name }; return { id: 'web', name, size: bytes?.byteLength ?? 0 }; },
-  async shareCopyFile() { return { ok: false, code: 'sin-ayudante', message: 'En el navegador no se puede copiar un archivo.' }; },
-  async shareMail() { return { ok: false, code: 'sin-cliente', message: 'En el navegador no se puede enviar por correo.' }; },
+  async shareCopyFile() { return { ok: false, code: 'sin-ayudante', message: t('core.web.copyFile') }; },
+  async shareMail() { return { ok: false, code: 'sin-cliente', message: t('core.web.mail') }; },
   async shareReveal() { if (webShare) await web.savePdf({ bytes: webShare.bytes, suggestedName: webShare.name }); return { ok: true }; },
   async shareWhatsApp() { window.open('https://web.whatsapp.com/', '_blank', 'noopener'); return { ok: true, desktop: false, copied: false }; },
   async shareAi(_id, provider) {
@@ -62,7 +84,7 @@ const web = {
   async printRun(id) {
     const job = webPrintJobs.get(id);
     webPrintJobs.delete(id);
-    if (!job) return { ok: false, error: 'No hay páginas que imprimir.' };
+    if (!job) return { ok: false, error: t('core.web.noPages') };
     const { paper, title } = job.opts;
     const urls = job.pages.map((p) => URL.createObjectURL(new Blob([p.jpg], { type: 'image/jpeg' })));
     const frame = Object.assign(document.createElement('iframe'), { title: 'Imprimir' });

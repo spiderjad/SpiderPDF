@@ -1,11 +1,12 @@
 // Compartir: qué se comparte y qué avisar. Puro (sin DOM); se prueba en Node (test/share.test.js).
 import { hasRedactions } from './savePlan.js';
 import { incrementalPlan } from './signed.js';
+import { t } from './i18n/index.js';
 
 /** Nombre propuesto para la copia: el del documento, o «documento». */
 export function shareName(docName) {
   const base = String(docName ?? '').replace(/\.pdf$/i, '').trim();
-  return `${base && base !== 'Documento sin guardar' ? base : 'documento'}.pdf`;
+  return `${base || t('dialogs.defaultDocName')}.pdf`; // sin archivo (documento nuevo o unido): «documento.pdf»
 }
 
 /**
@@ -20,14 +21,14 @@ export function sharePlan(state, { scope = 'all', hidden = false } = {}, { prote
   const pages = scope === 'selection' ? all.filter((p) => selected.has(p.key)) : all;
   const original = !dirty && !!file?.path && scope === 'all' && !hidden && !security;
   const notices = [];
-  if (hasRedactions(pages)) notices.push({ tone: 'danger', text: 'Las zonas a redactar se aplican en la copia: lo que hay debajo no se podrá recuperar.' });
+  if (hasRedactions(pages)) notices.push({ tone: 'danger', text: t('dialogs.share.noticeRedact') });
   const signed = sources.find((s) => s.signed > 0 && pages.some((p) => p.docId === s.docId));
   if (signed && !original) {
     const inc = incrementalPlan(pages, signed, { security: !!security });
-    if (hidden || !inc.incremental) notices.push({ tone: 'danger', text: 'La firma digital no será válida en la copia que compartes.' });
-    else notices.push({ tone: 'info', text: 'Tus cambios van como revisión nueva: la firma digital sigue siendo válida.' });
+    if (hidden || !inc.incremental) notices.push({ tone: 'danger', text: t('dialogs.share.noticeSigBroken') });
+    else notices.push({ tone: 'info', text: t('dialogs.share.noticeSigKept') });
   }
-  if (protectedNow) notices.push({ tone: 'info', text: 'La copia va protegida con contraseña, como el documento.' });
+  if (protectedNow) notices.push({ tone: 'info', text: t('dialogs.share.noticeProtected') });
   return { pages, original, notices };
 }
 
@@ -37,32 +38,32 @@ export const AI_PROVIDERS = { claude: 'Claude', chatgpt: 'ChatGPT' };
 /** Texto para mostrar tras compartir. target: whatsapp | ai | mail | copy | reveal; r: respuesta del proceso principal. */
 export function shareResult(target, r) {
   if (target === 'ai') {
-    const name = AI_PROVIDERS[r?.provider] ?? 'la IA';
-    if (!r?.ok) return { ok: false, text: r?.message ?? `No se pudo abrir ${name}.` };
-    if (!r.copied) return { ok: false, text: `Se abrió ${name}, pero no se pudo copiar el PDF. Usa «Mostrar en el Explorador» y arrástralo.` };
-    return { ok: true, text: `${r.desktop ? `${name} está abierto` : `Se abrió ${name} en el navegador`}. Pega con Ctrl+V y escribe tu pregunta.` };
+    const name = AI_PROVIDERS[r?.provider] ?? t('dialogs.share.theAi');
+    if (!r?.ok) return { ok: false, text: r?.message ?? t('dialogs.share.aiOpenFailed', { name }) };
+    if (!r.copied) return { ok: false, text: t('dialogs.share.aiNotCopied', { name }) };
+    return { ok: true, text: t(r.desktop ? 'dialogs.share.aiDesktop' : 'dialogs.share.aiBrowser', { name }) };
   }
   if (target === 'whatsapp') {
-    if (!r?.ok) return { ok: false, text: r?.message ?? 'No se pudo abrir WhatsApp.' };
+    if (!r?.ok) return { ok: false, text: r?.message ?? t('dialogs.share.whatsappFailed') };
     if (r.desktop) {
       return r.copied
-        ? { ok: true, text: 'WhatsApp está abierto. Elige el chat y pega con Ctrl+V.' }
-        : { ok: false, text: 'Se abrió WhatsApp, pero no se pudo copiar el PDF. Usa «Mostrar en el Explorador» y arrástralo al chat.' };
+        ? { ok: true, text: t('dialogs.share.whatsappOpen') }
+        : { ok: false, text: t('dialogs.share.whatsappNotCopied') };
     }
-    return { ok: true, text: 'WhatsApp no está instalado: se abrió WhatsApp Web en el navegador y la carpeta con el PDF. Arrastra el archivo al chat.' };
+    return { ok: true, text: t('dialogs.share.whatsappWeb') };
   }
   if (target === 'mail') {
-    if (r?.ok) return { ok: true, text: 'Se abrió un correo nuevo con el PDF adjunto.' };
-    if (r?.code === 'cancelado') return { ok: true, text: 'Se canceló el correo.' };
+    if (r?.ok) return { ok: true, text: t('dialogs.share.mailOpen') };
+    if (r?.code === 'cancelado') return { ok: true, text: t('dialogs.share.mailCancelled') };
     if (r?.code === 'sin-cliente') {
-      return { ok: false, text: 'Tu programa de correo no admite adjuntar desde otras aplicaciones (por ejemplo, el Outlook nuevo). Usa «Copiar archivo» y pégalo en el correo con Ctrl+V.' };
+      return { ok: false, text: t('dialogs.share.mailNoClient') };
     }
-    return { ok: false, text: r?.message ?? 'No se pudo abrir el correo.' };
+    return { ok: false, text: r?.message ?? t('dialogs.share.mailFailed') };
   }
   if (target === 'copy') {
     return r?.ok
-      ? { ok: true, text: 'PDF copiado. Pégalo con Ctrl+V en un correo, un chat o una carpeta.' }
-      : { ok: false, text: r?.message ?? 'No se pudo copiar el PDF.' };
+      ? { ok: true, text: t('dialogs.share.copyOk') }
+      : { ok: false, text: r?.message ?? t('dialogs.share.copyFailed') };
   }
-  return r?.ok ? { ok: true, text: 'Se abrió la carpeta con el PDF.' } : { ok: false, text: r?.message ?? 'No se pudo abrir la carpeta.' };
+  return r?.ok ? { ok: true, text: t('dialogs.share.revealOk') } : { ok: false, text: r?.message ?? t('dialogs.share.revealFailed') };
 }

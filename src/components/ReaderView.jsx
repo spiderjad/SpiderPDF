@@ -8,7 +8,7 @@ import { rectToDisplay } from '../geometry.js';
 
 const PT_TO_PX = 96 / 72; // 100 % = tamaño real en pantalla
 
-export default function ReaderView({ state, dispatch, ref, tool, colors, conflicts, textSel, onTextSel, search, policy, textBoxes }) {
+export default function ReaderView({ state, dispatch, ref, tool, colors, conflicts, textSel, onTextSel, search, policy, textBoxes, onLink, outlineProps }) {
   const scrollRef = useRef(null);
   const pageEls = useRef([]);
   const ratios = useRef(new Map());
@@ -66,6 +66,18 @@ export default function ReaderView({ state, dispatch, ref, tool, colors, conflic
     },
   }), [state.pages, dispatch]);
 
+  /**
+   * Enlace de una página: los internos llevan a la posición ACTUAL de su página (tras reordenar); si se
+   * eliminó, o si es una web, decide App (onLink: { uri } | { missing: true }).
+   */
+  const followLink = (page, link) => {
+    if (link.uri) { onLink?.({ uri: link.uri }); return; }
+    const i = state.pages.findIndex((p) => p.docId === page.docId && p.index === link.pageIndex);
+    if (i < 0) { onLink?.({ missing: true }); return; }
+    dispatch({ type: 'current', index: i });
+    goTo(i, 'smooth');
+  };
+
   // Al entrar en modo lectura, ir a la página actual.
   useEffect(() => { goTo(currentRef.current); }, []);
 
@@ -94,6 +106,7 @@ export default function ReaderView({ state, dispatch, ref, tool, colors, conflic
         pages={state.pages}
         current={state.current}
         onGo={(i) => { dispatch({ type: 'current', index: i }); goTo(i, 'smooth'); }}
+        outlineProps={outlineProps}
         onMove={policy?.pages === false ? null : (key, to) => dispatch({ type: 'move', keys: new Set([key]), to })}
       />
 
@@ -119,6 +132,7 @@ export default function ReaderView({ state, dispatch, ref, tool, colors, conflic
                   currentHit={search?.currentHit?.key === page.key ? search.currentHit : null}
                   scanned={!!search?.imagePages.includes(i + 1)}
                   canFill={policy?.forms !== false}
+                  onLink={(link) => followLink(page, link)}
                   {...textBoxes}
                 />
                 </ErrorBoundary>

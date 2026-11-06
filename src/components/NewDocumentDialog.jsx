@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { FilePlus2, Minus, Plus } from 'lucide-react';
 import { Field, Segmented } from './PrintDialog.jsx';
 import { PAGE_SIZES, MAX_NEW_PAGES, DEFAULT_NEW_DOC, clampCount, newPageSize } from '../newDocument.js';
+import { useT } from '../i18n/index.js';
 
 const STORE = 'spiderpdf:nuevo';
 const PREVIEW_BOX = 168; // px: la página más grande (A3 en vertical) cabe en este cuadrado
@@ -20,6 +21,7 @@ function loadPrefs() {
  * Recuerda el tamaño y la orientación. onCreate({ size, landscape, count }).
  */
 export default function NewDocumentDialog({ onCancel, onCreate }) {
+  const t = useT();
   const ref = useRef(null);
   const [o, setO] = useState(loadPrefs);
   const set = (patch) => setO((x) => ({ ...x, ...patch }));
@@ -65,21 +67,21 @@ export default function NewDocumentDialog({ onCancel, onCreate }) {
       >
         <div className="flex items-center gap-3 border-b border-line px-5 py-3.5">
           <span className="grid size-8 place-items-center rounded-lg bg-accent-soft text-accent-ink" aria-hidden="true"><FilePlus2 size={16} strokeWidth={1.75} /></span>
-          <h2 id="nuevo-titulo" className="text-base font-semibold tracking-tight">Nuevo documento</h2>
+          <h2 id="nuevo-titulo" className="text-base font-semibold tracking-tight">{t('dialogs.newDoc.title')}</h2>
         </div>
 
         <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
-          <section aria-label="Vista previa" className="flex shrink-0 flex-col items-center justify-center gap-3 bg-desk px-6 py-6 sm:w-[240px]">
+          <section aria-label={t('dialogs.common.preview')} className="flex shrink-0 flex-col items-center justify-center gap-3 bg-desk px-6 py-6 sm:w-[240px]">
             <Preview size={o.size} landscape={o.landscape} count={count} />
             <p className="tabnum text-center text-xs text-muted-desk" aria-live="polite">
-              {count === 1 ? '1 página' : `${count} páginas`} · {PAGE_SIZES[o.size].label} {o.landscape ? 'horizontal' : 'vertical'}
+              {t('dialogs.newDoc.pages', { count })} · {PAGE_SIZES[o.size].label} {o.landscape ? t('dialogs.newDoc.landscapeLower') : t('dialogs.newDoc.portraitLower')}
             </p>
           </section>
 
           <div className="min-w-0 flex-1 space-y-5 overflow-y-auto px-5 py-5 text-sm">
             <fieldset>
-              <legend className="mb-1.5 text-xs font-medium text-muted">Tamaño</legend>
-              <div role="radiogroup" aria-label="Tamaño" className="grid grid-cols-3 gap-2">
+              <legend className="mb-1.5 text-xs font-medium text-muted">{t('dialogs.common.size')}</legend>
+              <div role="radiogroup" aria-label={t('dialogs.common.size')} className="grid grid-cols-3 gap-2">
                 {Object.entries(PAGE_SIZES).map(([k, s], i) => (
                   <button
                     key={k}
@@ -108,18 +110,18 @@ export default function NewDocumentDialog({ onCancel, onCreate }) {
               </div>
             </fieldset>
 
-            <Field label="Orientación">
+            <Field label={t('dialogs.newDoc.orientation')}>
               <Segmented
-                label="Orientación"
+                label={t('dialogs.newDoc.orientation')}
                 value={o.landscape ? 'h' : 'v'}
                 onChange={(v) => set({ landscape: v === 'h' })}
-                options={[['v', 'Vertical'], ['h', 'Horizontal']]}
+                options={[['v', t('dialogs.newDoc.portrait')], ['h', t('dialogs.newDoc.landscape')]]}
               />
             </Field>
 
-            <Field label="Páginas" htmlFor="nuevo-paginas">
+            <Field label={t('dialogs.common.pages')} htmlFor="nuevo-paginas">
               <div className="flex items-center gap-1.5">
-                <StepButton label="Una página menos" disabled={count <= 1} onClick={() => step(-1)}><Minus size={16} strokeWidth={1.75} /></StepButton>
+                <StepButton label={t('dialogs.newDoc.fewer')} disabled={count <= 1} onClick={() => step(-1)}><Minus size={16} strokeWidth={1.75} /></StepButton>
                 <input
                   id="nuevo-paginas"
                   type="number"
@@ -132,21 +134,21 @@ export default function NewDocumentDialog({ onCancel, onCreate }) {
                   aria-invalid={!valid}
                   className="no-spin tabnum h-9 w-16 rounded-lg border border-line bg-panel px-2.5 text-center aria-[invalid=true]:border-danger"
                 />
-                <StepButton label="Una página más" disabled={count >= MAX_NEW_PAGES} onClick={() => step(1)}><Plus size={16} strokeWidth={1.75} /></StepButton>
+                <StepButton label={t('dialogs.newDoc.more')} disabled={count >= MAX_NEW_PAGES} onClick={() => step(1)}><Plus size={16} strokeWidth={1.75} /></StepButton>
               </div>
-              {!valid && <p role="alert" className="mt-1.5 text-xs text-danger">Escribe un número de 1 a {MAX_NEW_PAGES}.</p>}
+              {!valid && <p role="alert" className="mt-1.5 text-xs text-danger">{t('dialogs.newDoc.invalidCount', { max: MAX_NEW_PAGES })}</p>}
             </Field>
           </div>
         </div>
 
         <div className="flex items-center justify-end gap-2 border-t border-line px-5 py-3">
-          <button type="button" onClick={onCancel} className="h-9 rounded-lg px-3.5 text-sm font-medium transition-[background-color,scale] hover:bg-hover active:scale-[0.98]">Cancelar</button>
+          <button type="button" onClick={onCancel} className="h-9 rounded-lg px-3.5 text-sm font-medium transition-[background-color,scale] hover:bg-hover active:scale-[0.98]">{t('dialogs.common.cancel')}</button>
           <button
             type="submit"
             disabled={!valid}
-            className="h-9 rounded-lg bg-accent px-4 text-sm font-medium text-on-accent transition-[background-color,scale] hover:bg-accent/90 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
+            className="h-9 rounded-lg bg-inverse px-4 text-sm font-medium text-on-inverse transition-[background-color,scale] hover:bg-inverse-hover active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
           >
-            Crear
+            {t('dialogs.newDoc.create')}
           </button>
         </div>
       </form>

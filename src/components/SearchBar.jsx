@@ -3,6 +3,7 @@ import { Search, ChevronUp, ChevronDown, X, ImageOff } from 'lucide-react';
 import { pdf } from '../engine/client.js';
 import { normalizeQuery } from '../textGeom.js';
 import { useDelayed } from '../useDelayed.js';
+import { t, useT } from '../i18n/index.js';
 
 /**
  * Búsqueda en todo el documento: página a página en el worker (la interfaz no se bloquea),
@@ -58,26 +59,27 @@ export function useSearch(pages, open) {
 /** Lista legible de páginas: «3», «3 y 5», «3, 5 y 8». */
 function pageList(nums) {
   if (nums.length === 1) return String(nums[0]);
-  return `${nums.slice(0, -1).join(', ')} y ${nums.at(-1)}`;
+  return t('reader.common.listAnd', { list: nums.slice(0, -1).join(', '), last: nums.at(-1) });
 }
 
 export function imagePagesMessage(nums, total) {
   if (!nums.length) return null;
-  if (nums.length === total) return total === 1 ? 'Esta página es una imagen; la búsqueda necesitará OCR.' : 'Este documento son imágenes; la búsqueda necesitará OCR.';
+  if (nums.length === total) return total === 1 ? t('reader.search.imageOne') : t('reader.search.imageAll');
   return nums.length === 1
-    ? `La página ${nums[0]} es una imagen; la búsqueda necesitará OCR.`
-    : `Las páginas ${pageList(nums.slice(0, 6))}${nums.length > 6 ? ' (y más)' : ''} son imágenes; la búsqueda necesitará OCR.`;
+    ? t('reader.search.imagePage', { n: nums[0] })
+    : t('reader.search.imagePages', { pages: `${pageList(nums.slice(0, 6))}${nums.length > 6 ? t('reader.search.more') : ''}` });
 }
 
 /** Barra de búsqueda flotante, arriba a la derecha de la vista Leer. */
 export default function SearchBar({ search, total, onClose, inputRef }) {
+  useT(); // repintar al cambiar el idioma
   const { query, setQuery, hits, current, searching, progress, imagePages, next, prev } = search;
   const has = normalizeQuery(query).length > 0;
   const showProgress = useDelayed(has && searching);
   let counter = '';
   if (has) {
-    if (hits.length) counter = `${current + 1} de ${hits.length}`;
-    else counter = searching ? '' : 'Sin resultados';
+    if (hits.length) counter = t('reader.search.counter', { n: current + 1, total: hits.length });
+    else counter = searching ? '' : t('reader.search.none');
   }
   const note = has ? imagePagesMessage(imagePages, total) : null;
 
@@ -89,8 +91,8 @@ export default function SearchBar({ search, total, onClose, inputRef }) {
           <input
             ref={inputRef}
             type="search"
-            aria-label="Buscar en el documento"
-            placeholder="Buscar en el documento"
+            aria-label={t('reader.search.label')}
+            placeholder={t('reader.search.label')}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => {
@@ -101,16 +103,16 @@ export default function SearchBar({ search, total, onClose, inputRef }) {
           />
           <span className="tabnum shrink-0 text-xs text-muted" aria-live="polite">{counter}</span>
         </label>
-        <BarButton label="Anterior (Mayús+Intro)" icon={ChevronUp} onClick={prev} disabled={!hits.length} />
-        <BarButton label="Siguiente (Intro)" icon={ChevronDown} onClick={next} disabled={!hits.length} />
-        <BarButton label="Cerrar (Esc)" icon={X} onClick={onClose} />
+        <BarButton label={t('reader.search.prev')} icon={ChevronUp} onClick={prev} disabled={!hits.length} />
+        <BarButton label={t('reader.search.next')} icon={ChevronDown} onClick={next} disabled={!hits.length} />
+        <BarButton label={t('reader.search.close')} icon={X} onClick={onClose} />
       </div>
       {showProgress && (
         <p role="status" className="tabnum mx-1 mt-1 flex items-center gap-2 px-1.5 text-xs text-muted">
           <span className="relative block h-1 w-16 overflow-hidden rounded-full bg-hover" aria-hidden="true">
             <span className="absolute inset-y-0 left-0 rounded-full bg-accent" style={{ width: `${Math.round((100 * progress.done) / Math.max(1, progress.total))}%` }} />
           </span>
-          Buscando… página {Math.min(progress.done + 1, progress.total)} de {progress.total}
+          {t('reader.search.progress', { n: Math.min(progress.done + 1, progress.total), total: progress.total })}
         </p>
       )}
       {note && (

@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { sharePlan, shareName, shareResult } from '../src/share.js';
-import { normalizePrefs } from '../src/prefs.js';
+import { normalizePrefs, outputFolder, NAME_MAX } from '../src/prefs.js';
 
 const require = createRequire(import.meta.url);
 const { safeName } = require('../electron/share.cjs');
@@ -61,7 +61,6 @@ t('textos del resultado: WhatsApp (escritorio y web), correo (cancelado, sin cli
 
 t('nombres: el del documento; seguros para Windows (sin rutas, reservados ni caracteres prohibidos)', () => {
   assert.equal(shareName('contrato.pdf'), 'contrato.pdf');
-  assert.equal(shareName('Documento sin guardar'), 'documento.pdf');
   assert.equal(shareName(null), 'documento.pdf');
   assert.equal(safeName(String.raw`..\..\Windows\system32\x`), 'x.pdf');
   assert.equal(safeName('../../etc/y.pdf'), 'y.pdf');
@@ -78,10 +77,26 @@ t('Enviar a IA: textos según app o web, y si se copió', () => {
 });
 
 t('preferencias: por defecto Claude; solo valores conocidos', () => {
-  assert.deepEqual(normalizePrefs({}), { ai: 'claude' });
-  assert.deepEqual(normalizePrefs({ ai: 'chatgpt' }), { ai: 'chatgpt' });
-  assert.deepEqual(normalizePrefs({ ai: 'https://malo' , extra: 1 }), { ai: 'claude' });
-  assert.deepEqual(normalizePrefs(null), { ai: 'claude' });
+  const D = { ai: 'claude', userName: '', outputDir: '', quality: 'balanced', lang: 'auto' };
+  assert.deepEqual(normalizePrefs({}), D);
+  assert.deepEqual(normalizePrefs({ ai: 'chatgpt' }), { ...D, ai: 'chatgpt' });
+  assert.deepEqual(normalizePrefs({ ai: 'https://malo', extra: 1 }), D);
+  assert.deepEqual(normalizePrefs(null), D);
+});
+
+t('preferencias: nombre, carpeta de salida y calidad de compresión', () => {
+  const p = normalizePrefs({ userName: '  Diego Pennisi\n', outputDir: 'C:\\Users\\Diego\\Documentos\\PDF', quality: 'small' });
+  assert.equal(p.userName, 'Diego Pennisi');
+  assert.equal(p.outputDir, 'C:\\Users\\Diego\\Documentos\\PDF');
+  assert.equal(p.quality, 'small');
+  assert.equal(normalizePrefs({ userName: 'x'.repeat(200) }).userName.length, NAME_MAX);
+  assert.equal(normalizePrefs({ userName: 42, outputDir: {}, quality: 'máxima' }).quality, 'balanced');
+  assert.equal(normalizePrefs({ quality: 'toString' }).quality, 'balanced', 'solo claves propias de REDUCE_LEVELS');
+  assert.equal(normalizePrefs({ lang: 'ca' }).lang, 'ca');
+  assert.equal(normalizePrefs({ lang: 'fr' }).lang, 'auto');
+  // Carpeta para un archivo nuevo: la de salida o, si no hay, la del original.
+  assert.equal(outputFolder({ outputDir: 'D:\\Salida' }, 'C:\\Docs'), 'D:\\Salida');
+  assert.equal(outputFolder({ outputDir: '' }, 'C:\\Docs'), 'C:\\Docs');
 });
 
 console.log(`\n${passed} pruebas superadas.`);

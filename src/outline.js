@@ -4,6 +4,8 @@
 // en la numeración de ESE PDF (-1 si no lleva a una página suya). Tras unir, reordenar y eliminar,
 // cada marcador apunta a la posición actual de su página (pos), o a ninguna si se eliminó (missing).
 
+import { t } from './i18n/index.js';
+
 /**
  * Árbol para mostrar o guardar.
  *   pages: páginas en su orden actual ({ docId, index, source? }).
@@ -29,7 +31,7 @@ export function mapOutline(pages, trees, names = new Map()) {
   if (!docs.some((d) => trees.get(d)?.length)) return [];
   return docs.map((d) => ({
     id: `d${d}`,
-    title: names.get(d) ?? `Documento ${d}`,
+    title: names.get(d) ?? t('reader.outline.documentN', { n: d }),
     pos: pos.get(`${d}:${pages.find((p) => p.docId === d).index}`),
     missing: false,
     group: true,
@@ -81,4 +83,25 @@ export function visibleNodes(nodes, expanded, depth = 0, out = []) {
     if (n.children.length && expanded.has(n.id)) visibleNodes(n.children, expanded, depth + 1, out);
   }
   return out;
+}
+
+// --- Índice creado en la app (desde un índice impreso) ------------------------------------------
+// Vive en el estado (state.outline) como [{ title, key, children }]: key es la página del estado a la
+// que lleva (así sigue a su página al reordenar). Al guardar sustituye al índice de los PDF de partida.
+
+/** Como mapOutline, para el índice creado: [{ id, title, pos, missing, children }]. */
+export function mapCustomOutline(pages, tree, prefix = 'c') {
+  const pos = new Map(pages.map((p, i) => [p.key, i]));
+  return (tree ?? []).map((n, i) => {
+    const id = `${prefix}/${i}`;
+    const p = n.key != null ? pos.get(n.key) ?? -1 : -1;
+    return { id, title: n.title, pos: p, missing: n.key != null && p < 0, children: mapCustomOutline(pages, n.children, id) };
+  });
+}
+
+/** Índice creado → el que escribe el motor (compose): [{ title, pos, children }], sin los que no llevan a nada. */
+export function outlineForSave(pages, tree) {
+  if (!tree) return undefined;
+  const strip = (nodes) => nodes.map((n) => ({ title: n.title, pos: n.pos, children: strip(n.children) }));
+  return strip(pruneOutline(mapCustomOutline(pages, tree)));
 }

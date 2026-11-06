@@ -6,6 +6,8 @@
 //   textEdits { objIndex: { text, from } } textos del PDF cambiados ('' = borrado); from = texto original.
 //   Las anotaciones { type: 'redact', rect } son zonas que se redactan al guardar.
 // Las anotaciones y los campos viven dentro de las páginas, así que deshacer y rehacer los cubren.
+// outline: índice creado en la app ([{ title, key, children }], ver outline.js) o null = el de los PDF.
+// El historial guarda { pages, outline } en cada paso.
 
 import { moveAnnot } from './geometry.js';
 
@@ -31,6 +33,7 @@ export const initialState = {
   // Protección elegida para el próximo guardado (sin contraseñas: viven en el worker, ver pdf.setProtection):
   // null = la del PDF base; { kind: 'set', token, perms, separateOwner } o { kind: 'remove' }.
   security: null,
+  outline: null,        // índice creado desde un índice impreso (null = el de los PDF de partida)
   annotSel: null,       // { key, id } anotación seleccionada con la herramienta Seleccionar
   lastTag: null,        // etiqueta del último cambio, para agrupar ediciones seguidas en un solo paso de deshacer
 };
@@ -48,7 +51,7 @@ export function pagesFrom(source, sizes) {
  */
 function commit(s, pages, extra = {}, tag = null) {
   const merge = tag !== null && tag === s.lastTag && s.past.length > 0;
-  const past = merge ? s.past : [...s.past.slice(-HISTORY_LIMIT + 1), s.pages];
+  const past = merge ? s.past : [...s.past.slice(-HISTORY_LIMIT + 1), { pages: s.pages, outline: s.outline }];
   return { ...s, past, future: [], pages, dirty: true, lastTag: tag, ...extra };
 }
 
@@ -203,6 +206,10 @@ export function reducer(s, a) {
         return { ...p, fields: { ...(p.fields ?? {}), [a.annotIndex]: a.value } };
       }, {}, `field:${a.key}:${a.annotIndex}`);
 
+    case 'setOutline':
+      // a: { outline }. Índice creado desde un índice impreso (o editado); null vuelve al de los PDF.
+      return a.outline === s.outline ? s : commit(s, s.pages, { outline: a.outline });
+
     case 'setOcr':
       // a: { key, words, job }. Capa de texto del OCR de una página (src/ocr/layer.js). Todas las páginas de una
       // misma tanda (job) son un solo paso de deshacer.
@@ -216,18 +223,18 @@ export function reducer(s, a) {
 
     case 'undo': {
       if (!s.past.length) return s;
-      const pages = s.past[s.past.length - 1];
+      const { pages, outline } = s.past[s.past.length - 1];
       return {
-        ...s, pages, past: s.past.slice(0, -1), future: [s.pages, ...s.future], dirty: true, lastTag: null,
+        ...s, pages, outline, past: s.past.slice(0, -1), future: [{ pages: s.pages, outline: s.outline }, ...s.future], dirty: true, lastTag: null,
         selected: prune(s.selected, pages), annotSel: annotExists(pages, s.annotSel) ? s.annotSel : null,
       };
     }
 
     case 'redo': {
       if (!s.future.length) return s;
-      const [pages, ...future] = s.future;
+      const [{ pages, outline }, ...future] = s.future;
       return {
-        ...s, pages, past: [...s.past, s.pages], future, dirty: true, lastTag: null,
+        ...s, pages, outline, past: [...s.past, { pages: s.pages, outline: s.outline }], future, dirty: true, lastTag: null,
         selected: prune(s.selected, pages), annotSel: annotExists(pages, s.annotSel) ? s.annotSel : null,
       };
     }

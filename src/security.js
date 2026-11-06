@@ -4,6 +4,7 @@
 // Un PDF cifrado tiene una contraseña para abrir (la «de usuario», puede estar vacía) y otra de permisos (la «de
 // propietario»). Abierto con la de abrir, valen las restricciones de /P; con la de permisos, todo está permitido.
 // Las contraseñas NUNCA salen del worker de PDFium: aquí solo se manejan los bits de permiso.
+import { t } from './i18n/index.js';
 
 /** Bits de /P (ISO 32000, tabla 22). */
 export const PERM = {
@@ -62,10 +63,10 @@ export function permsPolicy(security) {
 /** Lo que no permite, en una frase: «editar, imprimir ni copiar». */
 export function deniedText(pol) {
   const list = [];
-  if (!pol.content || !pol.pages) list.push('editar');
-  if (!pol.print) list.push('imprimir');
-  if (!pol.copy) list.push('copiar');
-  return list.length > 1 ? `${list.slice(0, -1).join(', ')} ni ${list.at(-1)}` : list[0] ?? '';
+  if (!pol.content || !pol.pages) list.push(t('dialogs.security.deniedEdit'));
+  if (!pol.print) list.push(t('dialogs.security.deniedPrint'));
+  if (!pol.copy) list.push(t('dialogs.security.deniedCopy'));
+  return list.length > 1 ? t('dialogs.security.deniedList', { list: list.slice(0, -1).join(', '), last: list.at(-1) }) : list[0] ?? '';
 }
 
 /** Aviso al abrir un PDF con restricciones (null si no tiene). */
@@ -73,7 +74,7 @@ export function permsNotice(pol) {
   if (!pol) return null;
   const denied = deniedText(pol);
   if (!denied) return null;
-  return `Este PDF está protegido y no permite ${denied}. Con la contraseña de permisos se puede todo: Archivo → Desbloquear permisos…`;
+  return t('dialogs.security.notice', { denied });
 }
 
 /** ¿Se puede cambiar o quitar la protección? Con la contraseña de permisos, o si la de abrir ya lo permite todo. */
@@ -83,9 +84,9 @@ export function canChangeSecurity(security) {
 
 /** Comprobación de la contraseña nueva en el diálogo «Proteger»: mensaje de error o null. */
 export function checkNewPassword(pw, repeat) {
-  if (!pw) return 'Escribe una contraseña.';
-  if (pw.length < 4) return 'Usa al menos 4 caracteres.';
-  if (pw.length > 127) return 'Usa como mucho 127 caracteres.';
-  if (repeat !== undefined && pw !== repeat) return 'Las contraseñas no coinciden.';
+  if (!pw) return t('dialogs.security.pwEmpty');
+  if (pw.length < 4) return t('dialogs.security.pwShort');
+  if (pw.length > 127) return t('dialogs.security.pwLong');
+  if (repeat !== undefined && pw !== repeat) return t('dialogs.security.pwMismatch');
   return null;
 }

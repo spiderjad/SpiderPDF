@@ -1,0 +1,163 @@
+/*
+ * Organizar (src/components/OrganizeView.jsx). Prefijo og-.
+ * Colores, radios y sombras: tokens de spider-ui (var(--sp-*)); la barra superior es v-toolbar--sub.
+ * El papel es lo único blanco puro (.paper, en index.css); las fichas son del color del escritorio.
+ */
+
+.og-root { display: flex; flex-direction: column; height: 100%; }
+.og-bar { gap: 6px; }
+.og-summary { margin: 0 8px 0 4px; font-size: 13px; color: var(--sp-text-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.og-size-label { font-size: 12px; color: var(--sp-text-secondary); margin-right: 4px; }
+.og-size { width: 30px; padding: 0; justify-content: center; }
+
+.og-scroll { flex: 1; min-height: 0; overflow: auto; background: var(--sp-canvas); }
+.og-grid {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 20px 24px;
+  padding: 28px 32px 48px;
+}
+/* La lista no hace de caja: sus fichas y la de «Añadir» comparten la misma rejilla. */
+.og-list { display: contents; }
+
+.og-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: calc(var(--og-cell-w) + 24px);
+  padding: 12px 12px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--sp-radius-lg);
+  transition: background var(--sp-ease), border-color var(--sp-ease);
+  cursor: default;
+}
+.og-tile:hover { background: color-mix(in srgb, var(--sp-bg) 55%, transparent); border-color: var(--sp-border); }
+.og-tile[data-selected] { background: var(--sp-primary-light); border-color: var(--sp-primary-border); }
+
+.og-cell { display: flex; align-items: flex-end; justify-content: center; width: var(--og-cell-w); height: var(--og-cell-h); }
+.og-page { position: relative; border-radius: 2px; outline-offset: 4px; }
+.og-tile[data-selected] .og-page { outline: 2px solid var(--sp-primary); outline-offset: 4px; }
+.og-page:focus-visible { outline: 2px solid var(--sp-focus); outline-offset: 4px; }
+
+/* Casilla de selección: aparece al pasar el ratón o al estar marcada. */
+.og-check {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  color: var(--sp-on-primary);
+  background: var(--sp-bg);
+  border: 1.5px solid var(--sp-border-hover);
+  border-radius: 999px;
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity var(--sp-ease), background var(--sp-ease), border-color var(--sp-ease);
+}
+.og-tile:hover .og-check, .og-tile:focus-within .og-check, .og-check[aria-checked="true"] { opacity: 1; }
+.og-check[aria-checked="true"] { background: var(--sp-primary); border-color: var(--sp-primary); }
+.og-check:focus-visible { opacity: 1; outline: 2px solid var(--sp-focus); outline-offset: 2px; }
+
+/* Acciones sobre la miniatura (siempre oscuras: van sobre el papel blanco). */
+.og-actions {
+  position: absolute;
+  inset: auto 0 8px;
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity var(--sp-ease);
+}
+.og-tile:hover .og-actions, .og-tile:focus-within .og-actions { opacity: 1; }
+.og-hidden { display: none; }
+.og-thumb-btn {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: #fff;
+  background: color-mix(in srgb, var(--overlay) 85%, transparent);
+  border: 0;
+  border-radius: var(--sp-radius);
+  box-shadow: var(--sp-shadow);
+  cursor: pointer;
+  transition: background var(--sp-ease), transform var(--sp-ease);
+}
+.og-thumb-btn:hover { background: var(--overlay); }
+.og-thumb-btn:active { transform: scale(0.95); }
+.og-thumb-btn:focus-visible { outline: 2px solid var(--sp-primary); outline-offset: 1px; }
+
+.og-num {
+  display: block;
+  min-width: 26px;
+  margin-top: 10px;
+  padding: 0 8px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 22px;
+  text-align: center;
+  color: var(--sp-text-primary);
+  border-radius: 999px;
+}
+.og-tile[data-selected] .og-num { color: var(--sp-on-primary); background: var(--sp-primary); font-weight: 600; }
+
+.og-source {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  margin-top: 2px;
+  overflow: hidden;
+  font-size: 12px;
+  color: var(--sp-text-secondary);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.og-dot { flex-shrink: 0; width: 7px; height: 7px; border-radius: 999px; }
+
+/* Marcador de inserción al arrastrar. */
+.og-insert {
+  position: absolute;
+  top: 12px;
+  width: 4px;
+  height: var(--og-cell-h);
+  border-radius: 999px;
+  background: var(--sp-primary);
+}
+.og-insert--before { left: -14px; }
+.og-insert--after { right: -14px; }
+
+/* Ficha final: añadir PDF (clic) o soltar archivos. */
+.og-add {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: calc(var(--og-cell-w) + 24px);
+  height: calc(var(--og-cell-h) + 24px);
+  padding: 12px;
+  font-family: var(--sp-font);
+  color: var(--sp-text-secondary);
+  background: transparent;
+  border: 1.5px dashed var(--sp-border-hover);
+  border-radius: var(--sp-radius-lg);
+  cursor: pointer;
+  transition: background var(--sp-ease), border-color var(--sp-ease), color var(--sp-ease);
+}
+.og-add:hover { color: var(--sp-text-primary); background: color-mix(in srgb, var(--sp-bg) 55%, transparent); border-color: var(--sp-text-secondary); }
+.og-add:focus-visible { outline: 2px solid var(--sp-focus); outline-offset: 2px; }
+.og-add-icon { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 999px; background: var(--sp-bg); border: 1px solid var(--sp-border); color: var(--sp-text-primary); }
+.og-add-title { font-size: 13px; font-weight: 500; color: var(--sp-text-primary); }
+.og-add-hint { max-width: 90%; font-size: 12px; line-height: 1.35; text-align: center; }
+
+@media (prefers-reduced-motion: reduce) {
+  .og-tile, .og-check, .og-actions, .og-thumb-btn, .og-add { transition: none; }
+  .og-thumb-btn:active { transform: none; }
+}

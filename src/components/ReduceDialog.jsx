@@ -2,15 +2,17 @@ import { useEffect, useRef, useState } from 'react';
 import { FileDown, LoaderCircle, TriangleAlert } from 'lucide-react';
 import { useModal } from './PasswordDialog.jsx';
 import { REDUCE_LEVELS, sizeChange, worthSaving } from '../reduce.js';
+import { useT } from '../i18n/index.js';
 
 /**
  * «Reducir tamaño»: al abrir y al cambiar de nivel se calcula de verdad (el resultado se guarda tal cual), así el
  * tamaño que se muestra es el que tendrá el archivo. run(level, onProgress) → { promise, cancel };
  * before: tamaño actual (null = el del documento compuesto). notices: avisos (firma, contraseña). onSave(bytes, level).
  */
-export default function ReduceDialog({ before, notices = [], run, onCancel, onSave }) {
+export default function ReduceDialog({ initialLevel = 'balanced', before, notices = [], run, onCancel, onSave }) {
+  const t = useT();
   const ref = useRef(null);
-  const [level, setLevel] = useState('balanced');
+  const [level, setLevel] = useState(REDUCE_LEVELS[initialLevel] ? initialLevel : 'balanced'); // Preferencias → calidad
   const [results, setResults] = useState({}); // nivel → { running, progress } | { bytes, before, reduced } | { error }
   const jobs = useRef({});
   useModal(ref, onCancel);
@@ -42,11 +44,11 @@ export default function ReduceDialog({ before, notices = [], run, onCancel, onSa
   const worth = ready && worthSaving(cur.before, cur.bytes.length);
 
   const progressText = (p) => {
-    if (!p) return 'Preparando…';
-    if (p.phase === 'scan') return `Buscando imágenes… página ${p.done} de ${p.total}`;
-    if (p.phase === 'images') return `Reduciendo imágenes… ${p.done} de ${p.total}`;
-    if (p.phase === 'optimize') return 'Optimizando el archivo…';
-    return 'Preparando…';
+    if (!p) return t('dialogs.reduce.preparing');
+    if (p.phase === 'scan') return t('dialogs.reduce.scanning', { done: p.done, total: p.total });
+    if (p.phase === 'images') return t('dialogs.reduce.reducing', { done: p.done, total: p.total });
+    if (p.phase === 'optimize') return t('dialogs.reduce.optimizing');
+    return t('dialogs.reduce.preparing');
   };
 
   return (
@@ -62,11 +64,11 @@ export default function ReduceDialog({ before, notices = [], run, onCancel, onSa
       >
         <div className="flex items-center gap-3 border-b border-line px-5 py-3.5">
           <span className="grid size-8 place-items-center rounded-lg bg-accent-soft text-accent-ink" aria-hidden="true"><FileDown size={16} strokeWidth={1.75} /></span>
-          <h2 id="reducir-titulo" className="text-base font-semibold tracking-tight">Reducir tamaño</h2>
+          <h2 id="reducir-titulo" className="text-base font-semibold tracking-tight">{t('dialogs.reduce.title')}</h2>
         </div>
         <div className="space-y-4 overflow-y-auto px-5 py-5 text-sm">
           <fieldset className="space-y-2">
-            <legend className="mb-1.5 text-xs font-medium text-muted">Nivel</legend>
+            <legend className="mb-1.5 text-xs font-medium text-muted">{t('dialogs.reduce.level')}</legend>
             {Object.entries(REDUCE_LEVELS).map(([id, l]) => (
               <label key={id} className={`flex cursor-pointer items-start gap-2.5 rounded-lg border px-3 py-2.5 transition-colors ${level === id ? 'border-accent bg-accent-soft' : 'border-line hover:bg-hover'}`}>
                 <input type="radio" name="reducir-nivel" value={id} checked={level === id} onChange={() => setLevel(id)} data-autofocus={level === id || undefined} className="mt-1 accent-[var(--accent)]" />
@@ -77,7 +79,7 @@ export default function ReduceDialog({ before, notices = [], run, onCancel, onSa
               </label>
             ))}
           </fieldset>
-          <p className="text-xs text-muted">El texto y los dibujos no cambian: solo se reducen las imágenes y se ordena el archivo.</p>
+          <p className="text-xs text-muted">{t('dialogs.reduce.note')}</p>
 
           <div role="status" aria-live="polite" className="min-h-14 rounded-xl bg-hover px-4 py-3">
             {!cur || cur.running ? (
@@ -86,14 +88,14 @@ export default function ReduceDialog({ before, notices = [], run, onCancel, onSa
                 {progressText(cur?.progress)}
               </span>
             ) : cur.error ? (
-              <span className="text-danger">No se pudo reducir: {cur.error}</span>
+              <span className="text-danger">{t('dialogs.reduce.failed', { error: cur.error })}</span>
             ) : (
               <>
                 <span className="tabnum block text-lg font-semibold tracking-tight" data-testid="reducir-tamano">{sizeChange(cur.before, cur.bytes.length)}</span>
                 <span className="block text-xs text-muted">
                   {worth
-                    ? cur.reduced ? `${cur.reduced === 1 ? '1 imagen reducida' : `${cur.reduced} imágenes reducidas`}.` : 'Solo se ordenó el archivo: no había imágenes que reducir.'
-                    : 'Este PDF ya ocupa poco: no se gana espacio con este nivel.'}
+                    ? cur.reduced ? t('dialogs.reduce.images', { count: cur.reduced }) : t('dialogs.reduce.onlyOptimized')
+                    : t('dialogs.reduce.notWorth')}
                 </span>
               </>
             )}
@@ -110,13 +112,13 @@ export default function ReduceDialog({ before, notices = [], run, onCancel, onSa
           )}
         </div>
         <div className="flex items-center justify-end gap-2 border-t border-line px-5 py-3">
-          <button type="button" onClick={onCancel} className="h-9 rounded-lg px-3.5 text-sm font-medium transition-[background-color,scale] hover:bg-hover active:scale-[0.98]">Cancelar</button>
+          <button type="button" onClick={onCancel} className="h-9 rounded-lg px-3.5 text-sm font-medium transition-[background-color,scale] hover:bg-hover active:scale-[0.98]">{t('dialogs.common.cancel')}</button>
           <button
             type="submit"
             disabled={!worth}
-            className="h-9 rounded-lg bg-accent px-4 text-sm font-medium text-on-accent transition-[background-color,scale] hover:bg-accent/90 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
+            className="h-9 rounded-lg bg-inverse px-4 text-sm font-medium text-on-inverse transition-[background-color,scale] hover:bg-inverse-hover active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
           >
-            Guardar copia…
+            {t('dialogs.reduce.save')}
           </button>
         </div>
       </form>

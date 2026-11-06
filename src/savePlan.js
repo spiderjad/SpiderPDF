@@ -1,5 +1,6 @@
 // Cómo guardar (sin DOM; se prueba en Node).
 // Regla: un documento con redacciones nunca se guarda directamente sobre el original.
+import { t } from './i18n/index.js';
 
 const baseName = (name = '') => name.replace(/\.pdf$/i, '');
 const isWindowsPath = (p) => /^[a-z]:[\\/]/i.test(p) || p.includes('\\');
@@ -35,19 +36,22 @@ export const hasRedactions = (pages) => pages.some((p) => (p.annots ?? []).some(
 /**
  * Plan de guardado.
  *   path: ruta para escribir directamente (sin diálogo), o null si hay que preguntar.
- *   defaultPath: ruta propuesta en el diálogo (misma carpeta que el original).
+ *   defaultPath: ruta propuesta en el diálogo (la carpeta de salida de Preferencias, outDir; si no hay, la del original).
  *   originals: rutas de los PDF de partida (para avisar si se va a reemplazar uno).
  */
-export function planSave({ file, sources = [], pages, asNew = false, extract = false, dirty = true }) {
+export function planSave({ file, sources = [], pages, asNew = false, extract = false, dirty = true, outDir = '' }) {
   const redacted = hasRedactions(pages);
   const signedOriginals = sources.filter((s) => s.signed > 0 && s.path).map((s) => s.path);
   const originalPath = file?.path ?? sources.find((s) => s.path)?.path ?? null;
-  let base = file ? baseName(file.name) : (sources[0]?.name ?? 'documento');
+  let base = file ? baseName(file.name) : (sources[0]?.name ?? t('dialogs.defaultDocName'));
   let suggestedName;
-  if (extract) suggestedName = `${base} (extracto).pdf`;
+  if (extract) suggestedName = t('dialogs.savePlan.extractName', { base });
   else if (redacted) {
-    base = base.replace(/ \(redactado\)$/, ''); // no encadenar «(redactado) (redactado)»
-    suggestedName = `${base} (redactado).pdf`;
+    // no encadenar «(redactado) (redactado)» (ni en el idioma actual ni en español)
+    for (const tail of new Set([' (redactado)', baseName(t('dialogs.savePlan.redactedName', { base: '' }))])) {
+      if (base.endsWith(tail)) { base = base.slice(0, -tail.length); break; }
+    }
+    suggestedName = t('dialogs.savePlan.redactedName', { base });
   } else suggestedName = `${base}.pdf`;
   const direct = !extract && !asNew && !redacted && file?.path;
   const overSigned = !!direct && signedOriginals.some((p) => samePath(p, file.path));
@@ -55,14 +59,14 @@ export function planSave({ file, sources = [], pages, asNew = false, extract = f
     redacted,
     path: direct ? file.path : null,
     suggestedName,
-    defaultPath: joinPath(dirOf(originalPath), suggestedName),
+    defaultPath: joinPath(outDir || dirOf(originalPath), suggestedName),
     originals: [file?.path, ...sources.map((s) => s.path)].filter(Boolean),
     signedOriginals,
     // Guardar encima de un PDF firmado: sin cambios no se escribe nada (reescribirlo ya rompería la firma);
     // con cambios, antes se pregunta y se propone guardar una copia.
     skip: overSigned && !dirty,
     confirmSigned: overSigned && dirty,
-    copyPath: joinPath(dirOf(originalPath), `${base} (modificado).pdf`),
+    copyPath: joinPath(outDir || dirOf(originalPath), t('dialogs.savePlan.modifiedName', { base })),
   };
 }
 
@@ -82,5 +86,6 @@ export function signedSources({ sources = [], pages = [] }) {
   return sources.filter((s) => s.signed > 0 && used.has(s.docId));
 }
 
-export const REPLACE_ORIGINAL_WARNING = 'Vas a reemplazar el original. El texto redactado no se podrá recuperar.';
-export const SIGNED_WARNING = 'Este PDF está firmado digitalmente. Si lo modificas, la firma dejará de ser válida.';
+/** Avisos de las confirmaciones al guardar, en el idioma actual. */
+export const replaceOriginalWarning = () => t('dialogs.savePlan.replaceOriginal');
+export const signedWarning = () => t('dialogs.savePlan.signedWarning');

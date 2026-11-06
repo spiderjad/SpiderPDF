@@ -1,11 +1,13 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { Eye, EyeOff, KeyRound, LoaderCircle } from 'lucide-react';
+import { useT } from '../i18n/index.js';
 
 /**
  * Campo de contraseña con «Mostrar». El valor solo vive en el estado de este componente: nunca se guarda ni se
  * registra, y desaparece al cerrar el diálogo.
  */
 export function PasswordInput({ id, value, onChange, invalid, describedBy, autoFocus, autoComplete = 'off', label }) {
+  const t = useT();
   const [shown, setShown] = useState(false);
   return (
     <div className="relative">
@@ -26,11 +28,11 @@ export function PasswordInput({ id, value, onChange, invalid, describedBy, autoF
         type="button"
         onClick={() => setShown((v) => !v)}
         aria-pressed={shown}
-        aria-label={`${shown ? 'Ocultar' : 'Mostrar'} ${label ?? 'la contraseña'}`}
+        aria-label={t(shown ? 'dialogs.password.hideAria' : 'dialogs.password.showAria', { field: label ?? t('dialogs.password.theField') })}
         className="absolute inset-y-1 right-1 flex items-center gap-1.5 rounded-md px-2 text-xs font-medium text-muted transition-colors hover:bg-hover hover:text-ink"
       >
         {shown ? <EyeOff size={14} strokeWidth={1.75} aria-hidden="true" /> : <Eye size={14} strokeWidth={1.75} aria-hidden="true" />}
-        {shown ? 'Ocultar' : 'Mostrar'}
+        {shown ? t('dialogs.password.hide') : t('dialogs.password.show')}
       </button>
     </div>
   );
@@ -46,7 +48,7 @@ export function useModal(ref, onCancel) {
     const onKey = (e) => {
       if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); cancelRef.current(); return; }
       if (e.key !== 'Tab') return;
-      const els = [...ref.current.querySelectorAll('button:not([disabled]), input:not([disabled])')];
+      const els = [...ref.current.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled])')];
       const first = els[0]; const last = els.at(-1);
       if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
       else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
@@ -61,7 +63,10 @@ export function useModal(ref, onCancel) {
  * diálogo sigue abierto, con el campo vacío y el foco en él) o null (correcta: quien llama lo cierra).
  *   title, name (archivo), message, label, submitLabel, onCancel
  */
-export default function PasswordDialog({ title, name, message, label = 'Contraseña', submitLabel = 'Abrir', onSubmit, onCancel }) {
+export default function PasswordDialog({ title, name, message, label: labelProp, submitLabel: submitProp, onSubmit, onCancel }) {
+  const t = useT();
+  const label = labelProp ?? t('dialogs.password.label');
+  const submitLabel = submitProp ?? t('dialogs.password.open');
   const ref = useRef(null);
   const inputId = useId();
   const errorId = useId();
@@ -107,16 +112,16 @@ export default function PasswordDialog({ title, name, message, label = 'Contrase
           </div>
         </div>
         <label htmlFor={inputId} className="mt-4 mb-1.5 block text-xs font-medium text-muted">{label}</label>
-        <PasswordInput id={inputId} value={pw} onChange={(v) => { setPw(v); }} invalid={!!error} describedBy={error ? errorId : undefined} autoFocus label={`la ${label.toLowerCase()}`} />
+        <PasswordInput id={inputId} value={pw} onChange={(v) => { setPw(v); }} invalid={!!error} describedBy={error ? errorId : undefined} autoFocus label={t('dialogs.password.fieldArticle', { label: label.toLowerCase() })} />
         <p id={errorId} role={error ? 'alert' : undefined} className={`mt-1.5 min-h-5 text-xs ${error ? 'text-danger' : 'text-muted'}`}>
-          {error ? `${error}${tries > 1 ? ` (${tries} intentos)` : ''}` : 'Distingue mayúsculas y minúsculas.'}
+          {error ? (tries > 1 ? t('dialogs.password.tries', { error, count: tries }) : error) : t('dialogs.password.caseHint')}
         </p>
         <div className="mt-3 flex justify-end gap-2">
-          <button type="button" onClick={onCancel} className="h-9 rounded-lg px-3.5 text-sm font-medium transition-[background-color,scale] hover:bg-hover active:scale-[0.98]">Cancelar</button>
+          <button type="button" onClick={onCancel} className="h-9 rounded-lg px-3.5 text-sm font-medium transition-[background-color,scale] hover:bg-hover active:scale-[0.98]">{t('dialogs.common.cancel')}</button>
           <button
             type="submit"
             disabled={!pw || busy}
-            className="flex h-9 items-center gap-2 rounded-lg bg-accent px-4 text-sm font-medium text-on-accent transition-[background-color,scale] hover:bg-accent/90 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
+            className="flex h-9 items-center gap-2 rounded-lg bg-inverse px-4 text-sm font-medium text-on-inverse transition-[background-color,scale] hover:bg-inverse-hover active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
           >
             {busy && <LoaderCircle size={16} strokeWidth={1.75} className="spin" aria-hidden="true" />}
             {submitLabel}

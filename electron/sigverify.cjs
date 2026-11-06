@@ -3,6 +3,7 @@
 // CMS/PKCS#7 verifica con la clave pública del certificado que lleva dentro.
 // NO comprueba la confianza del certificado (cadena, almacén del sistema) ni la revocación: eso es el paso 5.
 'use strict';
+const { T } = require('./i18n.cjs');
 const crypto = require('node:crypto');
 
 // --- Lector DER/BER mínimo ---------------------------------------------------------------------
@@ -116,7 +117,7 @@ const normSerial = (s) => s.replace(/^0+/, '').toUpperCase();
 function verifyCms(cms, data) {
   const ci = read(cms, 0);
   const [ctype, wrapped] = kids(cms, ci);
-  if (oidOf(cms, ctype) !== OID.signedData) return { ok: false, reason: 'La firma no es un bloque PKCS#7/CMS.' };
+  if (oidOf(cms, ctype) !== OID.signedData) return { ok: false, reason: T('sig.notCms') };
   const sd = kids(cms, kids(cms, wrapped)[0]);
   let i = 2; // versión, algoritmos de resumen
   const encap = kids(cms, sd[i++]);
@@ -125,7 +126,7 @@ function verifyCms(cms, data) {
   if (sd[i]?.tag === 0xa0) { for (const c of kids(cms, sd[i])) if (c.tag === 0x30) certs.push(Buffer.from(rawOf(cms, c))); i++; }
   if (sd[i]?.tag === 0xa1) i++; // CRL
   const signers = kids(cms, sd[i]);
-  if (!signers.length) return { ok: false, reason: 'La firma no tiene firmante.' };
+  if (!signers.length) return { ok: false, reason: T('sig.noSigner') };
   const si = kids(cms, signers[0]);
   let j = 1;
   const sid = si[j++];
@@ -135,12 +136,12 @@ function verifyCms(cms, data) {
   const sigAlgSeq = kids(cms, si[j++]);
   const sigAlg = oidOf(cms, sigAlgSeq[0]);
   const signature = bytesOf(cms, si[j]);
-  if (!digestAlg) return { ok: false, unsupported: true, reason: 'Algoritmo de resumen no compatible.' };
+  if (!digestAlg) return { ok: false, unsupported: true, reason: T('sig.digestAlg') };
 
   // Contenido firmado: los bytes del documento, o el resumen SHA-1 que lleva dentro (adbe.pkcs7.sha1).
   let content = data;
   if (eContent) {
-    if (!crypto.createHash('sha1').update(data).digest().equals(eContent)) return { ok: false, reason: 'El resumen del documento no coincide con el firmado.' };
+    if (!crypto.createHash('sha1').update(data).digest().equals(eContent)) return { ok: false, reason: T('sig.digestMismatch') };
     content = eContent;
   }
 
@@ -155,9 +156,9 @@ function verifyCms(cms, data) {
       if (id === OID.messageDigest) md = bytesOf(cms, v);
       if (id === OID.signingTime) signingTime = asnTime(cms, v);
     }
-    if (!md) return { ok: false, reason: 'La firma no incluye el resumen del documento.' };
+    if (!md) return { ok: false, reason: T('sig.noDigest') };
     if (!crypto.createHash(digestAlg).update(content).digest().equals(md)) {
-      return { ok: false, reason: 'El resumen del documento no coincide con el firmado.' };
+      return { ok: false, reason: T('sig.digestMismatch') };
     }
     // Se firma el SET de atributos (etiqueta 0x31), no el [0] implícito.
     toVerify = Buffer.concat([Buffer.from([0x31]), cms.subarray(signedAttrs.start + 1, signedAttrs.end)]);
@@ -167,7 +168,7 @@ function verifyCms(cms, data) {
   let serial = null;
   if (sid.tag === 0x30) serial = normSerial(bytesOf(cms, kids(cms, sid)[1]).toString('hex'));
   const parsed = certs.map((der) => { try { return { der, x: new crypto.X509Certificate(der) }; } catch { return null; } }).filter(Boolean);
-  if (!parsed.length) return { ok: false, reason: 'La firma no incluye el certificado del firmante.' };
+  if (!parsed.length) return { ok: false, reason: T('sig.noCert') };
   const ordered = [...parsed.filter((c) => serial && normSerial(c.x.serialNumber) === serial), ...parsed];
 
   const hash = SIG_HASH[sigAlg] ?? digestAlg;
@@ -180,7 +181,7 @@ function verifyCms(cms, data) {
     try { ok = crypto.verify(hash, toVerify, opts, signature); } catch { ok = false; }
     if (ok) return { ok: true, name: safeName(c.der) ?? c.x.subject, signingTime };
   }
-  return { ok: false, reason: 'La firma criptográfica no verifica con el certificado incluido.', name: safeName(ordered[0].der), signingTime };
+  return { ok: false, reason: T('sig.badCrypto'), name: safeName(ordered[0].der), signingTime };
 }
 
 function safeName(der) { try { return subjectName(der); } catch { return null; } }
@@ -224,21 +225,21 @@ function verifyPdfSignatures(input) {
 function checkOne(buf, [a, b, c, d], subFilter) {
   const broken = (reason, extra = {}) => ({ status: 'broken', reason, ...extra });
   if (a !== 0 || b <= 0 || c <= b || d < 0 || c + d > buf.length || buf[b] !== 0x3c || buf[c - 1] !== 0x3e) {
-    return broken('El ByteRange no coincide con el archivo: se reescribió después de firmar.');
+    return broken(T('sig.byteRange'));
   }
   const hex = buf.subarray(b + 1, c - 1).toString('latin1').replace(/\s+/g, '');
-  if (!/^[0-9a-fA-F]*$/.test(hex)) return broken('El ByteRange no coincide con el archivo: se reescribió después de firmar.');
-  if (subFilter === 'adbe.x509.rsa_sha1') return { status: 'unknown', reason: 'Formato de firma antiguo (adbe.x509.rsa_sha1) que aún no se comprueba.' };
+  if (!/^[0-9a-fA-F]*$/.test(hex)) return broken(T('sig.byteRange'));
+  if (subFilter === 'adbe.x509.rsa_sha1') return { status: 'unknown', reason: T('sig.oldFormat') };
   const cms = Buffer.from(hex.length % 2 ? `${hex}0` : hex, 'hex');
   const data = Buffer.concat([buf.subarray(a, a + b), buf.subarray(c, c + d)]);
   let r;
-  try { r = verifyCms(cms, data); } catch (e) { return { status: 'unknown', reason: `No se pudo leer la firma (${e.message}).` }; }
+  try { r = verifyCms(cms, data); } catch (e) { return { status: 'unknown', reason: T('sig.unreadable', { error: e.message }) }; }
   if (r.unsupported) return { status: 'unknown', reason: r.reason, name: r.name, signingTime: r.signingTime };
   if (!r.ok) return broken(r.reason, { name: r.name, signingTime: r.signingTime });
   const after = buf.subarray(c + d);
   return blank(after)
     ? { status: 'intact', name: r.name, signingTime: r.signingTime }
-    : { status: 'modified', reason: 'Se añadieron cambios después de firmar.', name: r.name, signingTime: r.signingTime };
+    : { status: 'modified', reason: T('sig.modified'), name: r.name, signingTime: r.signingTime };
 }
 
 module.exports = { verifyPdfSignatures, pdfDate };

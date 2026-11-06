@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ImageOff } from 'lucide-react';
 import { renderPage, scaleFor } from '../engine/client.js';
 import { createTurns, drawLatest } from '../renderDraw.js';
+import { useT } from '../i18n/index.js';
 
 /** Tamaño visible de una página en puntos, teniendo en cuenta la rotación del usuario. */
 export function displaySize(page) {
@@ -17,6 +18,7 @@ const COMPACT_BELOW = 180; // px de ancho: por debajo, el aviso de error es solo
  * que falle no marca la página como rota (ver src/renderDraw.js).
  */
 export default function PageImage({ page, cssWidth, rootRef }) {
+  const t = useT();
   const canvasRef = useRef(null);
   const turns = useRef(createTurns());
   const [visible, setVisible] = useState(false);
@@ -75,15 +77,15 @@ export default function PageImage({ page, cssWidth, rootRef }) {
       {failed && !drawn && (compact ? (
         <span
           role="img"
-          aria-label="No se pudo mostrar esta página"
-          title="No se pudo mostrar esta página"
+          aria-label={t('reader.page.renderFailed')}
+          title={t('reader.page.renderFailed')}
           className="absolute inset-0 grid place-items-center text-[#6C6C75]"
         >
           <ImageOff size={18} strokeWidth={1.75} />
         </span>
       ) : (
         <p role="status" className="absolute inset-0 grid place-items-center p-4 text-center text-xs text-[#6C6C75] [text-wrap:balance]">
-          No se pudo mostrar esta página
+          {t('reader.page.renderFailed')}
         </p>
       ))}
     </div>

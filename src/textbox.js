@@ -8,6 +8,8 @@
 //         más parecida, que se usa si se elige otra, si se pide negrita/cursiva o si a la del PDF le faltan letras.
 //   fallback true: la fuente del PDF no tiene alguna letra escrita; se usa family.
 
+import { t } from './i18n/index.js';
+
 /** Fuentes incluidas (OFL 1.1, TTF en node_modules/@expo-google-fonts). */
 export const FAMILIES = {
   sans: { label: 'Inter', css: 'PDFE Inter', file: 'inter/{w}{i}/Inter_{w}{i}.ttf' },
@@ -38,7 +40,7 @@ export function displayFontName(raw = '') {
   const n = raw.replace(/^[A-Z]{6}\+/, '')
     .replace(/[-,](Bold|Italic|Oblique|Regular|Roman|Book|Medium|Light|Semibold|MT|PS)\b.*$/i, '')
     .replace(/(PS)?MT$|PS$/, ''); // sufijos de fabricante: TimesNewRomanPSMT, ArialMT
-  return n.replace(/([a-z])([A-Z])/g, '$1 $2').trim() || 'Fuente del PDF';
+  return n.replace(/([a-z])([A-Z])/g, '$1 $2').trim() || t('reader.textbox.pdfFont');
 }
 
 /** Familia incluida más parecida a una fuente del PDF. */

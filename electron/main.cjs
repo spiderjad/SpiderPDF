@@ -87,7 +87,7 @@ async function readPdfs(paths) {
     try {
       return { name: path.basename(p), path: p, bytes: await fs.readFile(p) };
     } catch (e) {
-      return { name: path.basename(p), path: p, error: `No se pudo leer el archivo: ${e.code || e.message}` };
+      return { name: path.basename(p), path: p, error: T('file.readFailed', { reason: e.code || e.message }) };
     }
   }));
 }
@@ -114,6 +114,8 @@ async function setRecents(list) {
 // macOS: menú nativo (la barra del sistema). Windows y Linux: sin menú nativo; la interfaz
 // dibuja su propia barra con el mismo contenido y gestiona los atajos de teclado.
 const MENU = require('./menu.json');
+const i18n = require('./i18n.cjs');
+const { T } = i18n;
 
 function buildMenu() {
   if (!isMac) { Menu.setApplicationMenu(null); return; }
@@ -123,13 +125,13 @@ function buildMenu() {
     const m = { ...it, ...(it.mac ?? {}) };
     if (m.submenu === 'recents') {
       return {
-        label: m.label,
+        label: i18n.label(m.label),
         submenu: recentList.length
-          ? [...recentList.map((r) => ({ label: r.name, click: send('openRecent', r.path) })), { type: 'separator' }, { label: 'Borrar lista', click: send('clearRecents') }]
-          : [{ label: 'Sin archivos recientes', enabled: false }],
+          ? [...recentList.map((r) => ({ label: r.name, click: send('openRecent', r.path) })), { type: 'separator' }, { label: T('menu.clearRecents'), click: send('clearRecents') }]
+          : [{ label: T('menu.noRecents'), enabled: false }],
       };
     }
-    const out = { label: m.label };
+    const out = { label: i18n.label(m.label) };
     if (m.accel) out.accelerator = m.accel;
     if (m.role) out.role = m.role;
     else out.click = send(m.cmd);
@@ -137,7 +139,7 @@ function buildMenu() {
   };
   const template = [
     { role: 'appMenu' },
-    ...MENU.map((menu) => ({ label: menu.label, submenu: menu.items.map(item).filter(Boolean) })),
+    ...MENU.map((menu) => ({ label: i18n.label(menu.label), submenu: menu.items.map(item).filter(Boolean) })),
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
@@ -145,8 +147,8 @@ function buildMenu() {
 // Colores de la barra de título (los botones de ventana los pinta Windows).
 const TITLEBAR_H = 40;
 const overlayColors = () => (nativeTheme.shouldUseDarkColors
-  ? { color: '#0E0E11', symbolColor: '#F5F5F5' }
-  : { color: '#FFFFFF', symbolColor: '#121216' });
+  ? { color: '#0A0A0A', symbolColor: '#EDEDED' } // = --sp-bg / --sp-text-primary de spider-ui (oscuro)
+  : { color: '#FFFFFF', symbolColor: '#0A0A0A' });
 
 function createWindow() {
   win = new BrowserWindow({
@@ -157,7 +159,7 @@ function createWindow() {
     show: false,
     title: APP_NAME,
     ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}),
-    backgroundColor: nativeTheme.shouldUseDarkColors ? '#0E0E11' : '#FFFFFF',
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#0A0A0A' : '#FFFFFF',
     ...(isMac ? {} : { titleBarStyle: 'hidden', titleBarOverlay: { ...overlayColors(), height: TITLEBAR_H } }),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
@@ -179,11 +181,11 @@ function createWindow() {
     if (!dirty) return;
     const choice = dialog.showMessageBoxSync(win, {
       type: 'question',
-      buttons: ['Salir sin guardar', 'Cancelar'],
+      buttons: [T('quit.discard'), T('quit.cancel')],
       defaultId: 1,
       cancelId: 1,
-      message: 'Hay cambios sin guardar',
-      detail: 'Si cierras ahora, se perderán los cambios hechos en las páginas.',
+      message: T('quit.message'),
+      detail: T('quit.detail'),
     });
     if (choice === 1) e.preventDefault();
   });
@@ -195,8 +197,11 @@ function createWindow() {
 
 // --- IPC -----------------------------------------------------------------
 // Versión del contrato con la interfaz (= DESKTOP_API de src/desktop.js y apiVersion del preload).
-const DESKTOP_API = 5;
+const DESKTOP_API = 9;
 ipcMain.handle('app:apiVersion', () => DESKTOP_API);
+// Idioma: el del sistema al arrancar; la ventana manda el que usa de verdad (Preferencias → Idioma).
+ipcMain.on('app:setLang', (_e, lang) => i18n.setLang(String(lang)));
+i18n.onChange(() => buildMenu());
 
 const isPdfPath = (p) => typeof p === 'string' && path.isAbsolute(p) && /\.pdf$/i.test(p);
 
@@ -236,7 +241,7 @@ const printJobs = new Map();
 let printSeq = 0;
 const DUPLEX = new Set(['simplex', 'longEdge', 'shortEdge']);
 const PAGE_SIZES = new Set(['A3', 'A4', 'Letter', 'Legal']);
-const num = (v, min, max) => { const n = Number(v); if (!(n >= min && n <= max)) throw new Error('Opción de impresión no válida.'); return n; };
+const num = (v, min, max) => { const n = Number(v); if (!(n >= min && n <= max)) throw new Error(T('print.badOption')); return n; };
 
 // Impresoras instaladas. Pruebas e2e (sin empaquetar): globalThis.__spiderPdfPrintersHook.
 ipcMain.handle('print:printers', async () => {
@@ -263,7 +268,7 @@ ipcMain.handle('print:begin', async (_e, o = {}) => {
 
 ipcMain.handle('print:page', async (_e, id, page) => {
   const job = printJobs.get(id);
-  if (!job || !(page?.jpg instanceof Uint8Array)) throw new Error('Página de impresión no válida.');
+  if (!job || !(page?.jpg instanceof Uint8Array)) throw new Error(T('print.badPage'));
   const b = page.box ?? {};
   const box = { rotate: b.rotate === 90 ? 90 : 0, x: num(b.x, -5000, 5000), y: num(b.y, -5000, 5000), w: num(b.w, 1, 10000), h: num(b.h, 1, 10000) };
   const name = `p${job.pages.length + 1}.jpg`;
@@ -289,7 +294,7 @@ function sheetsHtml(title, paper, pages) {
     const rot = rotate ? 'transform: rotate(90deg);' : '';
     return `<div class="sheet"><img src="${name}" alt="" style="left:${pt(left)};top:${pt(top)};width:${pt(iw)};height:${pt(ih)};${rot}"></div>`;
   };
-  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${esc(title)}</title><style>
+  return `<!doctype html><html lang="${i18n.getLang()}"><head><meta charset="utf-8"><title>${esc(title)}</title><style>
 @page { size: ${pt(paper.w)} ${pt(paper.h)}; margin: 0 }
 html, body { margin: 0; padding: 0; background: #fff }
 .sheet { position: relative; width: ${pt(paper.w)}; height: ${pt(paper.h)}; overflow: hidden; break-after: page }
@@ -317,7 +322,7 @@ async function printSheets(job, pages, part, options) {
         // Con el diálogo del sistema, «cancel» es que el usuario canceló. En silencio nadie cancela: es un error
         // (p. ej. la impresora necesitaba mostrar una ventana y no pudo).
         const userCancel = !ok && !options.silent && /cancel/i.test(String(reason));
-        resolve({ ok, cancelled: userCancel, error: ok || userCancel ? null : 'La impresora no aceptó el trabajo.' });
+        resolve({ ok, cancelled: userCancel, error: ok || userCancel ? null : T('print.rejected') });
       });
     });
   } finally {
@@ -327,7 +332,7 @@ async function printSheets(job, pages, part, options) {
 
 ipcMain.handle('print:run', async (e, id) => {
   const job = printJobs.get(id);
-  if (!job || !job.pages.length) throw new Error('No hay páginas que imprimir.');
+  if (!job || !job.pages.length) throw new Error(T('print.noPages'));
   printJobs.delete(id);
   const o = job.opts;
   const base = {
@@ -362,9 +367,9 @@ ipcMain.handle('print:run', async (e, id) => {
 
 ipcMain.handle('dialog:open', async () => {
   const res = await dialog.showOpenDialog(win, {
-    title: 'Abrir PDF',
+    title: T('dialog.openTitle'),
     properties: ['openFile', 'multiSelections'],
-    filters: [{ name: 'Documentos PDF', extensions: ['pdf'] }],
+    filters: [{ name: T('dialog.pdfFilter'), extensions: ['pdf'] }],
   });
   return res.canceled ? [] : readPdfs(res.filePaths);
 });
@@ -372,11 +377,22 @@ ipcMain.handle('dialog:open', async () => {
 ipcMain.handle('files:pending', async () => readPdfs(pendingPaths.splice(0)));
 
 // Solo elige dónde guardar (sin escribir): la interfaz decide si hace falta confirmar antes.
+// Preferencias → «Carpeta de salida»: elegir una carpeta. → ruta o null.
+ipcMain.handle('dialog:chooseFolder', async (_e, { defaultPath } = {}) => {
+  const res = await dialog.showOpenDialog(win, {
+    title: T('dialog.folderTitle'),
+    buttonLabel: T('dialog.folderButton'),
+    defaultPath: typeof defaultPath === 'string' && defaultPath ? defaultPath : undefined,
+    properties: ['openDirectory', 'createDirectory'],
+  });
+  return res.canceled || !res.filePaths?.[0] ? null : res.filePaths[0];
+});
+
 ipcMain.handle('dialog:saveAs', async (_e, { defaultPath } = {}) => {
   const res = await dialog.showSaveDialog(win, {
-    title: 'Guardar PDF',
+    title: T('dialog.saveTitle'),
     defaultPath: typeof defaultPath === 'string' ? defaultPath : undefined,
-    filters: [{ name: 'Documento PDF', extensions: ['pdf'] }],
+    filters: [{ name: T('dialog.pdfDocument'), extensions: ['pdf'] }],
   });
   return res.canceled || !res.filePath ? null : res.filePath;
 });
@@ -402,7 +418,7 @@ const share = createShare({
 });
 app.on('will-quit', () => share.cleanup());
 ipcMain.handle('share:prepare', (_e, o = {}) => {
-  if (o.bytes && !(o.bytes instanceof Uint8Array) && !(o.bytes instanceof ArrayBuffer)) throw new Error('Se esperaban los bytes del PDF.');
+  if (o.bytes && !(o.bytes instanceof Uint8Array) && !(o.bytes instanceof ArrayBuffer)) throw new Error(T('ipc.expectedPdf'));
   return share.prepare({ bytes: o.bytes, from: typeof o.from === 'string' ? o.from : undefined, name: o.name });
 });
 ipcMain.handle('share:copyFile', (_e, id) => share.copyFile(String(id)));
@@ -414,9 +430,52 @@ ipcMain.handle('share:reveal', (_e, id) => share.reveal(String(id)));
 ipcMain.handle('share:whatsapp', (_e, id) => share.whatsapp(String(id)));
 ipcMain.handle('share:ai', (_e, id, provider) => share.ai(String(id), String(provider)));
 
+// --- Exportar (Excel, Word) -------------------------------------------------------------------
+// La interfaz genera el archivo; aquí se elige dónde y se escribe con el mismo guardado atómico que los PDF.
+// Solo se pueden abrir después (export:open) los archivos exportados en esta sesión.
+const EXPORT_KINDS = {
+  xlsx: { title: 'export.excelTitle', name: 'export.excelName', ext: 'xlsx' }, // claves de strings.json
+  docx: { title: 'export.wordTitle', name: 'export.wordName', ext: 'docx' },
+};
+const exported = new Set();
+ipcMain.handle('export:save', async (_e, { bytes, defaultPath, kind } = {}) => {
+  const k = EXPORT_KINDS[kind];
+  if (!k) throw new Error(T('export.unknownFormat'));
+  if (!(bytes instanceof Uint8Array) && !(bytes instanceof ArrayBuffer)) throw new Error(T('ipc.expectedFile'));
+  const res = await dialog.showSaveDialog(win, {
+    title: T(k.title),
+    defaultPath: typeof defaultPath === 'string' ? defaultPath : undefined,
+    filters: [{ name: T(k.name), extensions: [k.ext] }],
+  });
+  if (res.canceled || !res.filePath) return null;
+  const filePath = path.extname(res.filePath) ? res.filePath : `${res.filePath}.${k.ext}`;
+  await writeAtomic(filePath, Buffer.from(bytes), { onRetry: (e, i) => e2eLog('exportar: reintento', i, e.code) });
+  exported.add(path.resolve(filePath));
+  return { path: filePath, name: path.basename(filePath) };
+});
+// En e2e (sin empaquetar), globalThis.__spiderPdfOpenPathHook(path) sustituye a abrirlo con su programa.
+ipcMain.handle('export:open', async (_e, filePath) => {
+  const full = path.resolve(String(filePath));
+  if (!exported.has(full)) return { ok: false, message: T('export.onlyExported') };
+  const hook = app.isPackaged ? null : globalThis.__spiderPdfOpenPathHook;
+  const err = await (hook ? hook(full) : shell.openPath(full));
+  return err ? { ok: false, message: T('export.openFailed', { error: err }) } : { ok: true };
+});
+
+// Enlaces web de un PDF: la interfaz ya pidió confirmación. Solo http(s) y correo; nada de archivos ni programas.
+// En e2e (sin empaquetar), globalThis.__spiderPdfLinkHook(url) sustituye al navegador del sistema.
+ipcMain.handle('link:open', async (_e, raw) => {
+  let url;
+  try { url = new URL(String(raw)); } catch { return { ok: false, message: T('link.invalid') }; }
+  if (!['http:', 'https:', 'mailto:'].includes(url.protocol)) return { ok: false, message: T('link.blocked') };
+  const hook = app.isPackaged ? null : globalThis.__spiderPdfLinkHook;
+  await (hook ? hook(url.href) : shell.openExternal(url.href));
+  return { ok: true };
+});
+
 // Integridad de las firmas digitales (ver sigverify.cjs). Recibe los bytes del PDF tal como se abrió.
 ipcMain.handle('pdf:verifySignatures', (_e, bytes) => {
-  if (!(bytes instanceof Uint8Array) && !(bytes instanceof ArrayBuffer)) throw new Error('Se esperaban los bytes del PDF.');
+  if (!(bytes instanceof Uint8Array) && !(bytes instanceof ArrayBuffer)) throw new Error(T('ipc.expectedPdf'));
   return verifyPdfSignatures(Buffer.from(bytes));
 });
 
@@ -424,9 +483,9 @@ ipcMain.handle('file:save', async (_e, { bytes, path: target, suggestedName }) =
   let filePath = target;
   if (!filePath) {
     const res = await dialog.showSaveDialog(win, {
-      title: 'Guardar PDF',
+      title: T('dialog.saveTitle'),
       defaultPath: suggestedName,
-      filters: [{ name: 'Documento PDF', extensions: ['pdf'] }],
+      filters: [{ name: T('dialog.pdfDocument'), extensions: ['pdf'] }],
     });
     if (res.canceled || !res.filePath) return null;
     filePath = res.filePath;
@@ -457,6 +516,7 @@ nativeTheme.on('updated', () => {
 
 // --- Ciclo de vida -----------------------------------------------------------
 app.whenReady().then(async () => {
+  i18n.setLang(i18n.detect([app.getLocale()])); // getLocale respeta --lang (las pruebas e2e lo usan)
   protocol.handle('app', async (req) => {
     const { pathname } = new URL(req.url);
     const file = path.normalize(path.join(DIST, decodeURIComponent(pathname)));

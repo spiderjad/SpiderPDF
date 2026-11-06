@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { rectFromDisplay } from '../geometry.js';
 import { boxPx } from './AnnotShapes.jsx';
 import { pdfFontFamily, registerFamilies, textboxCss } from '../fonts.js';
+import { useT } from '../i18n/index.js';
 
 /**
  * Cuadros de texto nuevo de una página en Leer (por encima de las firmas). Se ven como saldrán; el que se
@@ -21,6 +22,7 @@ export default function TextBoxes({ page, W, H, R, pxPerPt, tool, editingId, onE
 }
 
 function TextBox({ a, page, W, H, R, pxPerPt, tool, editing, onEdit, onDone, onBoxDown, dispatch }) {
+  const t = useT();
   const ref = useRef(null);
   const [pdfFamily, setPdfFamily] = useState(null);
   const pdfObj = a.style.usePdf ? a.style.pdf?.objIndex : undefined;
@@ -61,7 +63,7 @@ function TextBox({ a, page, W, H, R, pxPerPt, tool, editing, onEdit, onDone, onB
     return (
       <textarea
         ref={ref}
-        aria-label="Texto del cuadro"
+        aria-label={t('reader.textbox.editing')}
         value={a.text}
         spellCheck
         onChange={(e) => dispatch({ type: 'updateAnnot', key: page.key, id: a.id, changes: { text: e.target.value }, group: true })}
@@ -81,7 +83,7 @@ function TextBox({ a, page, W, H, R, pxPerPt, tool, editing, onEdit, onDone, onB
     <div
       role="button"
       tabIndex={-1}
-      aria-label={`Cuadro de texto: ${a.text}`}
+      aria-label={t('reader.textbox.aria', { text: a.text })}
       data-textbox={a.id}
       onPointerDown={(e) => onBoxDown(e, a)}
       onDoubleClick={() => onEdit(page.key, a.id)}

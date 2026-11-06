@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ScanText } from 'lucide-react';
 import { OCR_LANGS } from '../ocr/langs.js';
+import { useT } from '../i18n/index.js';
 
 const STORE = 'spiderpdf:ocr';
 
@@ -20,6 +21,7 @@ function loadLangs() {
  * PDF). onRun({ scope: 'scanned' | 'all', langs }).
  */
 export default function OcrDialog({ scanned, total, onCancel, onRun }) {
+  const t = useT();
   const ref = useRef(null);
   const [scope, setScope] = useState(scanned ? 'scanned' : 'all');
   const [langs, setLangs] = useState(loadLangs);
@@ -82,17 +84,17 @@ export default function OcrDialog({ scanned, total, onCancel, onRun }) {
       >
         <div className="flex items-center gap-3 border-b border-line px-5 py-3.5">
           <span className="grid size-8 place-items-center rounded-lg bg-accent-soft text-accent-ink" aria-hidden="true"><ScanText size={16} strokeWidth={1.75} /></span>
-          <h2 id="ocr-titulo" className="text-base font-semibold tracking-tight">Reconocer texto (OCR)</h2>
+          <h2 id="ocr-titulo" className="text-base font-semibold tracking-tight">{t('dialogs.ocr.title')}</h2>
         </div>
         <div className="space-y-5 overflow-y-auto px-5 py-5 text-sm">
-          <p className="text-muted">El texto reconocido se añade invisible encima de la imagen: la página se ve igual, pero se puede buscar, seleccionar y copiar.</p>
+          <p className="text-muted">{t('dialogs.ocr.intro')}</p>
           <fieldset className="space-y-2">
-            <legend className="mb-1.5 text-xs font-medium text-muted">Páginas</legend>
-            {option('scanned', `Páginas escaneadas (${scanned})`, 'Las que son solo una imagen.', !scanned)}
-            {option('all', `Todo el documento (${total})`, 'El texto que ya se podía buscar no se duplica.')}
+            <legend className="mb-1.5 text-xs font-medium text-muted">{t('dialogs.common.pages')}</legend>
+            {option('scanned', t('dialogs.ocr.scanned', { n: scanned }), t('dialogs.ocr.scannedHint'), !scanned)}
+            {option('all', t('dialogs.common.wholeDoc', { n: total }), t('dialogs.ocr.allHint'))}
           </fieldset>
           <fieldset>
-            <legend className="mb-1.5 text-xs font-medium text-muted">Idiomas del documento</legend>
+            <legend className="mb-1.5 text-xs font-medium text-muted">{t('dialogs.ocr.langs')}</legend>
             <div className="flex flex-wrap gap-2">
               {OCR_LANGS.map((l) => (
                 <label key={l.code} className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-1.5 transition-colors ${langs.includes(l.code) ? 'border-accent bg-accent-soft text-accent-ink' : 'border-line hover:bg-hover'}`}>
@@ -101,18 +103,18 @@ export default function OcrDialog({ scanned, total, onCancel, onRun }) {
                 </label>
               ))}
             </div>
-            {!langs.length && <p role="alert" className="mt-1.5 text-xs text-danger">Elige al menos un idioma.</p>}
-            {langs.length > 0 && <p className="mt-1.5 text-xs text-muted">Con menos idiomas va más rápido.</p>}
+            {!langs.length && <p role="alert" className="mt-1.5 text-xs text-danger">{t('dialogs.ocr.noLang')}</p>}
+            {langs.length > 0 && <p className="mt-1.5 text-xs text-muted">{t('dialogs.ocr.fewerFaster')}</p>}
           </fieldset>
         </div>
         <div className="flex items-center justify-end gap-2 border-t border-line px-5 py-3">
-          <button type="button" onClick={onCancel} className="h-9 rounded-lg px-3.5 text-sm font-medium transition-[background-color,scale] hover:bg-hover active:scale-[0.98]">Cancelar</button>
+          <button type="button" onClick={onCancel} className="h-9 rounded-lg px-3.5 text-sm font-medium transition-[background-color,scale] hover:bg-hover active:scale-[0.98]">{t('dialogs.common.cancel')}</button>
           <button
             type="submit"
             disabled={!valid}
-            className="h-9 rounded-lg bg-accent px-4 text-sm font-medium text-on-accent transition-[background-color,scale] hover:bg-accent/90 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
+            className="h-9 rounded-lg bg-inverse px-4 text-sm font-medium text-on-inverse transition-[background-color,scale] hover:bg-inverse-hover active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
           >
-            Reconocer
+            {t('dialogs.ocr.run')}
           </button>
         </div>
       </form>

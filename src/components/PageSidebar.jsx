@@ -3,6 +3,7 @@ import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import PageImage, { displaySize } from './PageImage.jsx';
 import { AnnotPreview } from './AnnotShapes.jsx';
 import OutlinePanel from './OutlinePanel.jsx';
+import { useT } from '../i18n/index.js';
 
 const STORE = 'spiderpdf:panel';
 const MIN_W = 160;
@@ -33,7 +34,8 @@ function marks(page) {
  * (recuerda ancho y plegado). Las miniaturas se pueden arrastrar para reordenar y, con el foco
  * en la lista, las flechas cambian de página.
  */
-export default function PageSidebar({ pages, current, onGo, onMove }) {
+export default function PageSidebar({ pages, current, onGo, onMove, outlineProps }) {
+  const t = useT();
   const [prefs, setPrefs] = useState(loadPrefs);
   const listRef = useRef(null);
   const dragKey = useRef(null);
@@ -53,14 +55,14 @@ export default function PageSidebar({ pages, current, onGo, onMove }) {
       <aside className="flex w-11 shrink-0 flex-col items-center gap-2 border-r border-line bg-panel py-2">
         <button
           type="button"
-          title="Mostrar el panel lateral"
-          aria-label="Mostrar el panel lateral"
+          title={t('reader.sidebar.show')}
+          aria-label={t('reader.sidebar.show')}
           onClick={() => setPrefs((p) => ({ ...p, collapsed: false }))}
           className="grid size-8 place-items-center rounded-lg text-ink transition-colors hover:bg-hover"
         >
           <PanelLeftOpen size={16} strokeWidth={1.75} />
         </button>
-        <span className="tabnum text-xs font-semibold text-accent" aria-label={`Página ${current + 1}`}>{current + 1}</span>
+        <span className="tabnum text-xs font-semibold text-accent" aria-label={t('reader.sidebar.pageN', { n: current + 1 })}>{current + 1}</span>
       </aside>
     );
   }
@@ -109,7 +111,7 @@ export default function PageSidebar({ pages, current, onGo, onMove }) {
       <div className="flex h-11 shrink-0 items-center gap-1 border-b border-line px-1.5">
         <div
           role="tablist"
-          aria-label="Panel lateral"
+          aria-label={t('reader.sidebar.label')}
           className="flex min-w-0 flex-1 rounded-lg bg-hover p-0.5"
           onKeyDown={(e) => {
             if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
@@ -119,7 +121,7 @@ export default function PageSidebar({ pages, current, onGo, onMove }) {
             e.currentTarget.querySelector(`[data-tab="${tab}"]`)?.focus();
           }}
         >
-          {[['pages', 'Páginas'], ['outline', 'Marcadores']].map(([id, label]) => {
+          {[['pages', t('reader.sidebar.pagesTab')], ['outline', t('reader.sidebar.outlineTab')]].map(([id, label]) => {
             const on = prefs.tab === id;
             return (
               <button
@@ -142,8 +144,8 @@ export default function PageSidebar({ pages, current, onGo, onMove }) {
         </div>
         <button
           type="button"
-          title="Plegar el panel"
-          aria-label="Plegar el panel"
+          title={t('reader.sidebar.collapse')}
+          aria-label={t('reader.sidebar.collapse')}
           onClick={() => setPrefs((p) => ({ ...p, collapsed: true }))}
           className="grid size-7 shrink-0 place-items-center rounded-lg text-muted transition-colors hover:bg-hover hover:text-ink"
         >
@@ -153,7 +155,7 @@ export default function PageSidebar({ pages, current, onGo, onMove }) {
 
       {prefs.tab === 'outline' ? (
         <div id="panel-outline" role="tabpanel" aria-labelledby="tab-outline" className="flex min-h-0 flex-1 flex-col">
-          <OutlinePanel pages={pages} current={current} onGo={onGo} />
+          <OutlinePanel pages={pages} current={current} onGo={onGo} {...outlineProps} />
         </div>
       ) : (
       <div
@@ -161,7 +163,7 @@ export default function PageSidebar({ pages, current, onGo, onMove }) {
         id="panel-pages"
         aria-labelledby="tab-pages"
         role="listbox"
-        aria-label="Páginas"
+        aria-label={t('reader.sidebar.pagesTab')}
         aria-activedescendant={pages[current] ? `thumb-${pages[current].key}` : undefined}
         tabIndex={0}
         onKeyDown={onKeyDown}
@@ -182,7 +184,7 @@ export default function PageSidebar({ pages, current, onGo, onMove }) {
               data-row={i}
               role="option"
               aria-selected={active}
-              aria-label={`Página ${i + 1}${m.redact ? ', con redacciones pendientes' : ''}${m.other ? ', con cambios' : ''}`}
+              aria-label={`${t('reader.sidebar.pageN', { n: i + 1 })}${m.redact ? t('reader.sidebar.withRedactions') : ''}${m.other ? t('reader.sidebar.withChanges') : ''}`}
               draggable={!!onMove}
               onDragStart={(e) => { dragKey.current = page.key; e.dataTransfer.setData(DRAG_TYPE, '1'); e.dataTransfer.effectAllowed = 'move'; }}
               onDragEnd={() => { dragKey.current = null; setDropAt(null); }}
@@ -200,8 +202,8 @@ export default function PageSidebar({ pages, current, onGo, onMove }) {
 
               <span className="flex items-center gap-1.5">
                 <span className={`tabnum text-xs ${active ? 'font-semibold text-accent' : 'text-muted'}`}>{i + 1}</span>
-                {m.redact && <span className="size-1.5 rounded-full bg-danger" title="Tiene redacciones pendientes" aria-hidden="true" />}
-                {m.other && <span className="size-1.5 rounded-full bg-accent" title="Tiene anotaciones o cambios" aria-hidden="true" />}
+                {m.redact && <span className="size-1.5 rounded-full bg-danger" title={t('reader.sidebar.dotRedact')} aria-hidden="true" />}
+                {m.other && <span className="size-1.5 rounded-full bg-accent" title={t('reader.sidebar.dotChanges')} aria-hidden="true" />}
               </span>
             </div>
           );
@@ -212,7 +214,7 @@ export default function PageSidebar({ pages, current, onGo, onMove }) {
       <div
         role="separator"
         aria-orientation="vertical"
-        aria-label="Ancho del panel"
+        aria-label={t('reader.sidebar.width')}
         aria-valuemin={MIN_W}
         aria-valuemax={MAX_W}
         aria-valuenow={prefs.width}
@@ -223,7 +225,7 @@ export default function PageSidebar({ pages, current, onGo, onMove }) {
           const d = { ArrowLeft: -16, ArrowRight: 16 }[e.key];
           if (d) { e.preventDefault(); setPrefs((p) => ({ ...p, width: clampW(p.width + d) })); }
         }}
-        title="Arrastra para cambiar el ancho (doble clic: ancho normal)"
+        title={t('reader.sidebar.resizeHint')}
         className="absolute -right-[3px] top-0 z-10 h-full w-1.5 cursor-col-resize outline-none transition-colors hover:bg-accent/30 focus-visible:bg-accent/40"
       />
     </aside>

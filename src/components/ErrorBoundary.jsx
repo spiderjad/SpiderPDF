@@ -1,5 +1,6 @@
 import { Component } from 'react';
 import { CircleAlert, RotateCcw } from 'lucide-react';
+import { t } from '../i18n/index.js';
 
 /**
  * Evita que un fallo al pintar una parte de la interfaz deje toda la ventana en blanco.
@@ -32,18 +33,18 @@ export default class ErrorBoundary extends Component {
           <span className="mb-4 grid size-11 place-items-center rounded-xl bg-danger-soft text-danger-ink">
             <CircleAlert size={22} strokeWidth={1.75} />
           </span>
-          <h2 className="text-base font-semibold">No se pudo mostrar esta vista</h2>
-          <p className="mt-1.5 text-sm text-muted">El documento sigue abierto y no se ha perdido ningún cambio.</p>
+          <h2 className="text-base font-semibold">{t('reader.error.title')}</h2>
+          <p className="mt-1.5 text-sm text-muted">{t('reader.error.body')}</p>
           <p className="mt-2 max-w-full truncate font-mono text-xs text-muted" title={String(this.state.error?.message ?? '')}>
             {String(this.state.error?.message ?? this.state.error)}
           </p>
           <button
             type="button"
             onClick={() => this.setState({ error: null })}
-            className="mt-5 flex h-9 items-center gap-2 rounded-lg bg-accent px-3.5 text-sm font-medium text-on-accent transition-[background-color,scale] hover:bg-accent/90 active:scale-[0.98]"
+            className="mt-5 flex h-9 items-center gap-2 rounded-lg bg-inverse px-3.5 text-sm font-medium text-on-inverse transition-[background-color,scale] hover:bg-inverse-hover active:scale-[0.98]"
           >
             <RotateCcw size={16} strokeWidth={1.75} />
-            Volver a intentar
+            {t('reader.error.retry')}
           </button>
         </div>
       </div>

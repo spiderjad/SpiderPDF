@@ -8,12 +8,14 @@ function subscribe(channel, cb) {
 
 contextBridge.exposeInMainWorld('desktop', {
   platform: process.platform,
-  apiVersion: 5, // = DESKTOP_API de src/desktop.js y de main.cjs (subirlas a la vez)
+  apiVersion: 9, // = DESKTOP_API de src/desktop.js y de main.cjs (subirlas a la vez)
   mainApiVersion: () => ipcRenderer.invoke('app:apiVersion'),
   openPdfs: () => ipcRenderer.invoke('dialog:open'),
   pendingFiles: () => ipcRenderer.invoke('files:pending'),
   savePdf: (opts) => ipcRenderer.invoke('file:save', opts),
   chooseSavePath: (opts) => ipcRenderer.invoke('dialog:saveAs', opts),
+  chooseFolder: (opts) => ipcRenderer.invoke('dialog:chooseFolder', opts),
+  setLang: (lang) => ipcRenderer.send('app:setLang', String(lang)),
   pathForFile: (file) => webUtils.getPathForFile(file),
   verifySignatures: (bytes) => ipcRenderer.invoke('pdf:verifySignatures', bytes),
   recents: () => ipcRenderer.invoke('recents:list'),
@@ -32,6 +34,9 @@ contextBridge.exposeInMainWorld('desktop', {
   onMenu: (cb) => subscribe('menu', cb),
   menuRole: (role) => ipcRenderer.send('menu:role', String(role)),
   onFiles: (cb) => subscribe('files:incoming', cb),
+  openLink: (url) => ipcRenderer.invoke('link:open', String(url)),
+  exportSave: (o) => ipcRenderer.invoke('export:save', o),
+  exportOpen: (path) => ipcRenderer.invoke('export:open', String(path)),
   sharePrepare: (o) => ipcRenderer.invoke('share:prepare', o),
   shareCopyFile: (id) => ipcRenderer.invoke('share:copyFile', id),
   shareMail: (id, subject) => ipcRenderer.invoke('share:mail', id, subject),

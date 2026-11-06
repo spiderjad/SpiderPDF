@@ -1,5 +1,6 @@
 import { Bold, BringToFront, Copy, Italic, SendToBack, TextAlignCenter, TextAlignEnd, TextAlignStart } from 'lucide-react';
 import { FAMILIES, usesPdfFont } from '../textbox.js';
+import { useT } from '../i18n/index.js';
 
 const mod = typeof navigator !== 'undefined' && navigator.platform.startsWith('Mac') ? '⌘' : 'Ctrl+';
 
@@ -9,6 +10,7 @@ const mod = typeof navigator !== 'undefined' && navigator.platform.startsWith('M
  * onStyle(cambios del estilo), onFont(valor del selector), onDuplicate, onOrder('front' | 'back').
  */
 export default function TextFormatBar({ annot, onStyle, onFont, onDuplicate, onOrder }) {
+  const t = useT();
   const st = annot.style;
   const fontValue = usesPdfFont(annot) ? 'pdf' : st.family;
   const toggle = (on, label, Icon, onClick, title) => (
@@ -19,22 +21,22 @@ export default function TextFormatBar({ annot, onStyle, onFont, onDuplicate, onO
   );
   const pdfName = st.pdf?.name;
   // La fuente del PDF no trae otra variante: pedir negrita o cursiva pasa a la incluida más parecida.
-  const variantTitle = (label) => (usesPdfFont(annot) ? `${label} (con ${FAMILIES[st.family].label}: «${pdfName}» no tiene esa variante)` : label);
+  const variantTitle = (label) => (usesPdfFont(annot) ? t('reader.format.variant', { label, family: FAMILIES[st.family].label, font: pdfName }) : label);
 
   return (
-    <div role="toolbar" aria-label="Formato del texto" className="ml-2 flex min-w-0 items-center gap-1 border-l border-line pl-3">
-      <label className="sr-only" htmlFor="tb-fuente">Fuente</label>
+    <div role="toolbar" aria-label={t('reader.format.toolbar')} className="ml-2 flex min-w-0 items-center gap-1 border-l border-line pl-3">
+      <label className="sr-only" htmlFor="tb-fuente">{t('reader.format.font')}</label>
       <select
         id="tb-fuente"
         value={fontValue}
         onChange={(e) => onFont(e.target.value)}
         className="h-8 max-w-48 rounded-lg border border-line bg-panel px-2 text-sm"
-        title={annot.fallback ? `«${pdfName}» del PDF no tiene todas las letras: se usa ${FAMILIES[st.family].label}` : undefined}
+        title={annot.fallback ? t('reader.format.fallback', { font: pdfName, family: FAMILIES[st.family].label }) : undefined}
       >
-        {st.pdf && <option value="pdf">{pdfName} (del PDF)</option>}
+        {st.pdf && <option value="pdf">{t('reader.format.fromPdf', { font: pdfName })}</option>}
         {Object.entries(FAMILIES).map(([k, f]) => <option key={k} value={k}>{f.label}</option>)}
       </select>
-      <label className="sr-only" htmlFor="tb-tamano">Tamaño en puntos</label>
+      <label className="sr-only" htmlFor="tb-tamano">{t('reader.format.sizeLabel')}</label>
       <input
         id="tb-tamano"
         type="number"
@@ -44,17 +46,17 @@ export default function TextFormatBar({ annot, onStyle, onFont, onDuplicate, onO
         value={st.size}
         onChange={(e) => { const v = Number(e.target.value); if (v >= 4 && v <= 200) onStyle({ size: v }); }}
         className="tabnum h-8 w-16 rounded-lg border border-line bg-panel px-2 text-sm"
-        title="Tamaño (pt)"
+        title={t('reader.format.sizeTitle')}
       />
-      {toggle(!!st.bold, 'Negrita', Bold, () => onStyle({ bold: !st.bold, usePdf: false }), variantTitle('Negrita'))}
-      {toggle(!!st.italic, 'Cursiva', Italic, () => onStyle({ italic: !st.italic, usePdf: false }), variantTitle('Cursiva'))}
-      <label className="grid size-8 cursor-pointer place-items-center rounded-lg hover:bg-hover" title="Color del texto">
-        <span className="sr-only">Color del texto</span>
+      {toggle(!!st.bold, t('reader.format.bold'), Bold, () => onStyle({ bold: !st.bold, usePdf: false }), variantTitle(t('reader.format.bold')))}
+      {toggle(!!st.italic, t('reader.format.italic'), Italic, () => onStyle({ italic: !st.italic, usePdf: false }), variantTitle(t('reader.format.italic')))}
+      <label className="grid size-8 cursor-pointer place-items-center rounded-lg hover:bg-hover" title={t('reader.format.color')}>
+        <span className="sr-only">{t('reader.format.color')}</span>
         <input type="color" value={st.color} onChange={(e) => onStyle({ color: e.target.value })} className="size-5 cursor-pointer rounded border-0 bg-transparent p-0" />
       </label>
       <span className="mx-1 h-5 w-px bg-line" aria-hidden="true" />
-      <div role="radiogroup" aria-label="Alineación" className="flex items-center">
-        {[['left', 'Alinear a la izquierda', TextAlignStart], ['center', 'Centrar', TextAlignCenter], ['right', 'Alinear a la derecha', TextAlignEnd]].map(([v, label, Icon]) => (
+      <div role="radiogroup" aria-label={t('reader.format.alignment')} className="flex items-center">
+        {[['left', t('reader.format.left'), TextAlignStart], ['center', t('reader.format.center'), TextAlignCenter], ['right', t('reader.format.right'), TextAlignEnd]].map(([v, label, Icon]) => (
           <button key={v} type="button" role="radio" aria-checked={st.align === v} aria-label={label} title={label} onClick={() => onStyle({ align: v })}
             className={`grid size-8 place-items-center rounded-lg transition-colors ${st.align === v ? 'bg-accent-soft text-accent-ink' : 'text-muted hover:bg-hover hover:text-ink'}`}>
             <Icon size={16} strokeWidth={1.75} />
@@ -62,9 +64,9 @@ export default function TextFormatBar({ annot, onStyle, onFont, onDuplicate, onO
         ))}
       </div>
       <span className="mx-1 h-5 w-px bg-line" aria-hidden="true" />
-      {toggle(false, 'Traer al frente', BringToFront, () => onOrder('front'))}
-      {toggle(false, 'Enviar atrás', SendToBack, () => onOrder('back'))}
-      {toggle(false, 'Duplicar', Copy, onDuplicate, `Duplicar (${mod}D)`)}
+      {toggle(false, t('reader.format.front'), BringToFront, () => onOrder('front'))}
+      {toggle(false, t('reader.format.back'), SendToBack, () => onOrder('back'))}
+      {toggle(false, t('reader.format.duplicate'), Copy, onDuplicate, t('reader.format.duplicateKey', { key: mod }))}
     </div>
   );
 }

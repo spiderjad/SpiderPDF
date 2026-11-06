@@ -3,6 +3,8 @@
 // guarda estado entre ejecuciones), con el WebAssembly ya compilado: crearla cuesta milisegundos.
 // Todo ocurre en memoria (MEMFS): ni los PDF ni las contraseñas tocan el disco, y nada se registra.
 
+import { t } from '../i18n/index.js';
+
 /**
  * createQpdf(factory, wasmBinary) → { run(args, files) }. factory: la función que exporta qpdf.mjs.
  * run(args, { 'in.pdf': bytes, … }, 'out.pdf') → bytes del archivo de salida.
@@ -31,7 +33,7 @@ export async function createQpdf(factory, wasmBinary) {
       // 0: bien; 3: bien con avisos (qpdf arregló algo del original). 2: error.
       if (code !== 0 && code !== 3) {
         const msg = log.filter((l) => !/password/i.test(l)).join(' ').slice(0, 300); // por si acaso, nada que hable de contraseñas
-        throw new Error(`qpdf no pudo procesar el PDF${msg ? `: ${msg}` : '.'}`);
+        throw new Error(msg ? t('engine.qpdfFailedDetail', { detail: msg }) : t('engine.qpdfFailed'));
       }
       return mod.FS.readFile(`/${output}`);
     },

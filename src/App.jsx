@@ -8,7 +8,7 @@ import { newAnnotId } from './state.js';
 import { pageTurn } from './components/AnnotShapes.jsx';
 import TextFormatBar from './components/TextFormatBar.jsx';
 import { redactConflicts, conflictMessage } from './conflicts.js';
-import { planSave, replacesOriginal, replacesSigned, signedSources, REPLACE_ORIGINAL_WARNING, SIGNED_WARNING } from './savePlan.js';
+import { planSave, replacesOriginal, replacesSigned, signedSources, replaceOriginalWarning, signedWarning } from './savePlan.js';
 import { incrementalPlan, reasonText, editPolicy, allowedTools, allows } from './signed.js';
 import { blankPage, blankSize, imagePage, insertIndex, referencePage } from './insertPages.js';
 import { printScale } from './print.js';
@@ -24,11 +24,14 @@ import PasswordDialog from './components/PasswordDialog.jsx';
 import ProtectDialog from './components/ProtectDialog.jsx';
 import ShareDialog from './components/ShareDialog.jsx';
 import ReduceDialog from './components/ReduceDialog.jsx';
+import TocDialog from './components/TocDialog.jsx';
+import ExcelDialog from './components/ExcelDialog.jsx';
+import WordDialog from './components/WordDialog.jsx';
 import { sizeChange } from './reduce.js';
 import { hasRedactions, dirOf, joinPath, samePath } from './savePlan.js';
 import { sharePlan, shareName, shareResult, AI_PROVIDERS } from './share.js';
 import PreferencesDialog from './components/PreferencesDialog.jsx';
-import { loadPrefs, savePrefs } from './prefs.js';
+import { loadPrefs, savePrefs, outputFolder } from './prefs.js';
 import { canChangeSecurity, choicesFrom, allAllowed } from './security.js';
 import SignatureStatus from './components/SignatureStatus.jsx';
 import { pdf } from './engine/client.js';
@@ -45,9 +48,10 @@ import ReaderView from './components/ReaderView.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 import SearchBar, { useSearch } from './components/SearchBar.jsx';
 import { selectedText } from './textGeom.js';
+import { t, useT, setLang, resolveLang, getLang } from './i18n/index.js';
 
 /** Acciones que chocan con una tarea en curso (abrir, guardar…): se ignoran mientras dure. */
-const BLOCKED_WHILE_BUSY = new Set(['reduce', 'share', 'protect', 'unprotect', 'unlock', 'new', 'ocr', 'open', 'openRecent', 'print', 'add','insertBlank', 'insertImage', 'save', 'saveAs', 'extract', 'delete', 'rotateLeft', 'rotateRight', 'undo', 'redo', 'selectAll']);
+const BLOCKED_WHILE_BUSY = new Set(['exportExcel', 'exportWord', 'reduce', 'share', 'protect', 'unprotect', 'unlock', 'new', 'ocr', 'open', 'openRecent', 'print', 'add','insertBlank', 'insertImage', 'save', 'saveAs', 'extract', 'delete', 'rotateLeft', 'rotateRight', 'undo', 'redo', 'selectAll']);
 
 const ZOOM_STEPS = [0.25, 0.5, 0.67, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4];
 const isPdf = (f) => f.type === 'application/pdf' || /\.pdf$/i.test(f.name);
@@ -56,9 +60,13 @@ const baseName = (name) => name.replace(/\.pdf$/i, '');
 // En macOS el menú es el nativo del sistema; en Windows, Linux y el navegador lo dibuja la app.
 const customMenu = desktop.platform !== 'darwin';
 
+const systemLanguages = () => [...(globalThis.navigator?.languages ?? [globalThis.navigator?.language ?? 'es'])];
+
 export default function App() {
+  useT(); // vuelve a pintar todo al cambiar de idioma (Preferencias → Idioma)
   const [state, dispatch] = useReducer(reducer, initialState);
   const stateRef = useRef(state);
+  const prefsRef = useRef(null); // preferencias (se asigna al leerlas, más abajo): para las funciones de guardar y exportar
   stateRef.current = state;
   const readerRef = useRef(null);
   const [busy, setBusy] = useState(false);
@@ -67,6 +75,10 @@ export default function App() {
   const [tool, setTool] = useState('select');
   const [colors, setColors] = useState({ highlight: '#FFD400', ink: '#1F3A93', note: '#FFD400' });
   const [sigOpen, setSigOpen] = useState(false);
+  // «Crear índice» desde un índice impreso: { tocPages: [posiciones], initial? (editar el creado) } o null.
+  const [tocDialog, setTocDialog] = useState(null);
+  const [exportKind, setExportKind] = useState(null); // 'excel' | 'word': diálogo de exportar abierto
+  const afterOcr = useRef(null); // 'word': al terminar el OCR pedido desde «Exportar a Word», se vuelve a él
   // Tarea larga en curso: { kind: 'open' | 'save' | 'extract', done, total, index?, count?, name? }
   const [task, setTask] = useState(null);
   const cancelOpen = useRef(null);
@@ -82,7 +94,8 @@ export default function App() {
   const [conflicts, setConflicts] = useState(() => new Map()); // pageKey -> { annots: Set, texts: Set }
   const seenConflicts = useRef(new Set());
 
-  const notify = useCallback((text, kind = 'info') => setToast({ text, kind, id: Date.now() }), []);
+  // action = { label, run }: botón en el aviso (p. ej. «Abrir en Excel» tras exportar); dura más para dar tiempo.
+  const notify = useCallback((text, kind = 'info', action = null) => setToast({ text, kind, action, id: Date.now() }), []);
   // Confirmación con varias salidas: ask({ title, message, icon, actions }) → id de la acción o null.
   const [dialog, setDialog] = useState(null);
   const ask = (opts) => new Promise((resolve) => setDialog({ ...opts, resolve }));
@@ -107,7 +120,7 @@ export default function App() {
       .then((r) => set(Array.isArray(r) ? r : 'unavailable'))
       .catch((e) => set(e?.outdated || /No handler registered/i.test(String(e?.message))
         ? 'outdated'
-        : [{ status: 'unknown', reason: `No se pudo comprobar la firma (${e?.message ?? e}).` }]));
+        : [{ status: 'unknown', reason: t('core.app.sigCheckFailed', { error: e?.message ?? e }) }]));
   }, []);
 
   // Interfaz, preload y proceso principal deben ser de la misma versión (ver DESKTOP_API en desktop.js).
@@ -115,11 +128,11 @@ export default function App() {
     Promise.resolve()
       .then(() => (desktop.apiVersion === DESKTOP_API ? desktop.mainApiVersion?.() : desktop.apiVersion))
       .catch(() => null)
-      .then((v) => { if (v !== DESKTOP_API) notify('La aplicación se actualizó mientras estaba abierta. Ciérrala y vuelve a abrirla para que todo funcione.', 'error'); });
+      .then((v) => { if (v !== DESKTOP_API) notify(t('core.app.outdated'), 'error'); });
   }, [notify]);
 
   // Firmas de certificación (DocMDP): qué se puede editar. Toda acción del usuario pasa por act().
-  const policy = useMemo(() => editPolicy(state.sources), [state.sources]);
+  const policy = useMemo(() => editPolicy(state.sources), [state.sources, getLang()]); // eslint-disable-line react-hooks/exhaustive-deps -- el aviso va en el idioma actual
   const policyRef = useRef(policy);
   policyRef.current = policy;
   const act = useCallback((a) => {
@@ -128,9 +141,46 @@ export default function App() {
   }, [notify]);
   useEffect(() => {
     if (!toast) return undefined;
-    const t = setTimeout(() => setToast(null), toast.kind === 'error' ? 7000 : 3500);
+    const t = setTimeout(() => setToast(null), toast.kind === 'error' || toast.action ? 7000 : 3500);
     return () => clearTimeout(t);
   }, [toast]);
+
+  // Tras exportar a Excel o Word: el diálogo se cierra y el aviso ofrece abrir el archivo con su programa.
+  const exported = useCallback((saved, label) => {
+    setExportKind(null);
+    notify(t('core.app.exported', { name: saved.name }), 'info', saved.path ? {
+      label,
+      run: async () => {
+        const r = await desktop.exportOpen?.(saved.path).catch((e) => ({ ok: false, message: e.message }));
+        if (!r?.ok) notify(r?.message ?? t('core.app.openFileFailed'), 'error');
+      },
+    } : null);
+  }, [notify]);
+
+  // Enlaces del PDF que no resuelve la vista de lectura: webs (con confirmación) y páginas que ya no están.
+  const followLink = useCallback(async ({ uri, missing }) => {
+    if (missing) { notify(t('core.link.missing')); return; }
+    if (!uri) return;
+    let shown = uri;
+    try { const u = new URL(uri); if (!['http:', 'https:', 'mailto:'].includes(u.protocol)) throw new Error(); shown = u.href; } catch {
+      notify(t('core.link.blocked'), 'error');
+      return;
+    }
+    const ok = await ask({
+      title: shown.startsWith('mailto:') ? t('core.link.mailTitle') : t('core.link.openTitle'),
+      message: `${shown}\n\n${shown.startsWith('mailto:') ? t('core.link.opensInMail') : t('core.link.opensInBrowser')}`,
+      icon: 'link',
+      actions: [{ id: 'open', label: t('core.common.open'), kind: 'primary' }],
+    });
+    if (ok !== 'open') return;
+    if (typeof desktop.openLink !== 'function') { notify(t('core.link.outdated'), 'error'); return; }
+    try {
+      const r = await desktop.openLink(shown);
+      if (!r?.ok) notify(r?.message ?? t('core.link.failed'), 'error');
+    } catch (e) {
+      notify(t('core.link.failedWhy', { error: e.message }), 'error');
+    }
+  }, [notify]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- Cargar archivos -----------------------------------------------------
   async function load(entries) {
@@ -158,12 +208,12 @@ export default function App() {
           // Protegido: se pide la contraseña (con reintentos) hasta que vale o se cancela.
           setTask(null);
           opened = await askPassword({
-            title: 'Este PDF está protegido',
+            title: t('core.open.protectedTitle'),
             name: e.name,
-            message: 'Escribe la contraseña para abrirlo.',
-            submitLabel: 'Abrir',
+            message: t('core.open.protectedMessage'),
+            submitLabel: t('core.common.open'),
             attempt: (pw) => tryOpen(pw).then((value) => ({ value }), (x) => {
-              if (x.wrongPassword) return { error: 'La contraseña no es correcta. Vuelve a intentarlo.' };
+              if (x.wrongPassword) return { error: t('core.open.wrongPassword') };
               throw x;
             }),
           });
@@ -183,7 +233,7 @@ export default function App() {
     setTask(null);
     if (cancelled) {
       sources.forEach((src) => pdf.close(src.docId));
-      notify('Apertura cancelada.');
+      notify(t('core.open.cancelled'));
       return { sources: [], pages: [], cancelled: true };
     }
     if (errors.length) notify(errors.join(' '), 'error');
@@ -195,9 +245,9 @@ export default function App() {
     const s = stateRef.current;
     if (s.dirty && s.pages.length) {
       const ok = await ask({
-        title: 'Hay cambios sin guardar',
-        message: 'Si abres otro documento, se perderán los cambios de este.',
-        actions: [{ id: 'open', label: 'Abrir sin guardar', kind: 'danger' }],
+        title: t('core.unsaved.title'),
+        message: t('core.unsaved.openMessage'),
+        actions: [{ id: 'open', label: t('core.unsaved.openAnyway'), kind: 'danger' }],
       });
       if (!ok) return;
     }
@@ -212,7 +262,7 @@ export default function App() {
       rememberRecent(sources);
       const certified = editPolicy(sources);
       if (certified.notice) notify(certified.notice);
-      else if (sources.length > 1) notify(`${sources.length} PDFs unidos en un documento nuevo. Usa Guardar para elegir dónde guardarlo.`);
+      else if (sources.length > 1) notify(t('core.open.merged', { count: sources.length }));
     } finally {
       setBusy(false);
     }
@@ -228,13 +278,13 @@ export default function App() {
       // Un PDF protegido que no permite combinar páginas no se puede añadir a otro.
       const locked = loaded.sources.filter((src) => !editPolicy([src]).pages);
       locked.forEach((src) => pdf.close(src.docId));
-      if (locked.length) notify(`${locked.map((x) => `«${x.name}»`).join(', ')} está protegido y no permite combinar sus páginas con otro PDF.`, 'error');
+      if (locked.length) notify(t('core.add.locked', { names: locked.map((x) => `«${x.name}»`).join(', ') }), 'error');
       const sources = loaded.sources.filter((src) => !locked.includes(src));
       const pages = loaded.pages.filter((p) => sources.some((src) => src.docId === p.docId));
       if (!pages.length) return;
       dispatch({ type: 'add', sources, pages, at });
       rememberRecent(sources);
-      notify(pages.length === 1 ? 'Se añadió 1 página.' : `Se añadieron ${pages.length} páginas.`);
+      notify(t('core.add.done', { count: pages.length }));
     } finally {
       setBusy(false);
     }
@@ -254,14 +304,14 @@ export default function App() {
 
   async function openRecent(filePath) {
     let r;
-    try { r = await desktop.openRecent(filePath); } catch (e) { notify(`No se pudo abrir: ${e.message}`, 'error'); return; }
-    if (r?.missing) { notify(`«${r.name}» ya no existe o se movió. Se quitó de la lista de recientes.`, 'error'); return; }
+    try { r = await desktop.openRecent(filePath); } catch (e) { notify(t('core.recent.failed', { error: e.message }), 'error'); return; }
+    if (r?.missing) { notify(t('core.recent.missing', { name: r.name }), 'error'); return; }
     await openEntries(r.entries);
   }
 
   async function dropFiles(fileList, at) {
     const files = [...fileList].filter(isPdf);
-    if (!files.length) { if (fileList.length) notify('Solo se pueden añadir archivos PDF.', 'error'); return; }
+    if (!files.length) { if (fileList.length) notify(t('core.add.onlyPdf'), 'error'); return; }
     const entries = await Promise.all(files.map(fileToEntry));
     return stateRef.current.pages.length ? addEntries(entries, at) : openEntries(entries);
   }
@@ -305,23 +355,21 @@ export default function App() {
     const s = stateRef.current;
     const list = extract ? s.pages.filter((p) => s.selected.has(p.key)) : s.pages;
     if (!list.length) {
-      notify(extract ? 'Selecciona primero las páginas que quieres extraer.' : 'No hay páginas para guardar.', 'error');
+      notify(extract ? t('core.save.selectFirst') : t('core.save.noPages'), 'error');
       return;
     }
     // Con redacciones nunca se escribe sobre el original: siempre se pregunta dónde (ver src/savePlan.js).
     // Un PDF firmado digitalmente tampoco se sobrescribe sin confirmarlo.
-    const plan = planSave({ file: s.file, sources: s.sources, pages: list, asNew, extract, dirty: s.dirty });
-    if (plan.skip) { notify('No hay cambios que guardar. La firma digital sigue intacta.'); return; }
+    const plan = planSave({ file: s.file, sources: s.sources, pages: list, asNew, extract, dirty: s.dirty, outDir: prefsRef.current.outputDir });
+    if (plan.skip) { notify(t('core.save.nothing')); return; }
     const zones = list.reduce((n, p) => n + p.annots.filter((a) => a.type === 'redact').length, 0);
     if (zones) {
       const over = (await findConflicts(list)).length;
-      const extra = over
-        ? `\n\nAtención: ${over === 1 ? 'hay 1 elemento tuyo (firma, nota o texto)' : `hay ${over} elementos tuyos (firmas, notas o textos)`} encima de una zona; también se borrará${over === 1 ? '' : 'n'}.`
-        : '';
+      const extra = over ? `\n\n${t('core.redact.overlap', { count: over })}` : '';
       const ok = await ask({
-        title: 'Redactar y guardar una copia',
-        message: `Se guardará una copia en la que se elimina para siempre todo lo que hay bajo ${zones === 1 ? 'la zona redactada' : `las ${zones} zonas redactadas`}: texto, imágenes y comentarios.${extra}`,
-        actions: [{ id: 'go', label: 'Redactar y guardar', kind: 'danger' }],
+        title: t('core.redact.title'),
+        message: t('core.redact.message', { count: zones }) + extra,
+        actions: [{ id: 'go', label: t('core.redact.go'), kind: 'danger' }],
       });
       if (!ok) return;
     }
@@ -330,22 +378,22 @@ export default function App() {
     const signedSrc = s.sources.find((src) => src.signed > 0 && list.some((p) => p.docId === src.docId));
     const inc = signedSrc ? incrementalPlan(list, signedSrc, { security: !!s.security }) : null;
     const rewriteWhy = inc && !inc.incremental
-      ? `${SIGNED_WARNING}\n\nHay que reescribir el archivo entero porque ${reasonText(inc.reasons)}, y la firma no se puede conservar.`
-      : SIGNED_WARNING;
+      ? `${signedWarning()}\n\n${t('core.signed.rewriteWhy', { reason: reasonText(inc.reasons) })}`
+      : signedWarning();
     let target = plan.path;
     let defaultPath = plan.defaultPath;
     let overwriteOk = false;
     if (plan.confirmSigned) {
       const choice = await ask(inc?.incremental ? {
-        title: '¿Guardar en el PDF firmado?',
-        message: 'Los cambios se añaden al final del archivo como una revisión nueva. La firma sigue siendo válida para la versión que se firmó; los visores indicarán que hubo cambios después de firmar.',
+        title: t('core.signed.incTitle'),
+        message: t('core.signed.incMessage'),
         icon: 'signed',
-        actions: [{ id: 'over', label: 'Guardar', kind: 'primary' }, { id: 'copy', label: 'Guardar como…', kind: 'ghost' }],
+        actions: [{ id: 'over', label: t('core.common.save'), kind: 'primary' }, { id: 'copy', label: t('core.common.saveAs'), kind: 'ghost' }],
       } : {
-        title: '¿Guardar encima del original firmado?',
-        message: `${rewriteWhy}\n\nGuarda los cambios en una copia para conservar el original firmado.`,
+        title: t('core.signed.overTitle'),
+        message: `${rewriteWhy}\n\n${t('core.signed.overAdvice')}`,
         icon: 'signed',
-        actions: [{ id: 'copy', label: 'Guardar como…', kind: 'primary' }, { id: 'over', label: 'Guardar encima', kind: 'danger' }],
+        actions: [{ id: 'copy', label: t('core.common.saveAs'), kind: 'primary' }, { id: 'over', label: t('core.signed.overwrite'), kind: 'danger' }],
       });
       if (!choice) return;
       if (choice === 'copy') { target = null; defaultPath = plan.copyPath; } else overwriteOk = true;
@@ -357,10 +405,10 @@ export default function App() {
     const overSigned = !overwriteOk && !inc?.incremental && replacesSigned(plan, target);
     if (overRedacted || overSigned) {
       const ok = await ask({
-        title: 'Vas a reemplazar el original',
-        message: [overRedacted && REPLACE_ORIGINAL_WARNING, overSigned && rewriteWhy].filter(Boolean).join('\n\n'),
+        title: t('core.replace.title'),
+        message: [overRedacted && replaceOriginalWarning(), overSigned && rewriteWhy].filter(Boolean).join('\n\n'),
         icon: overSigned && !overRedacted ? 'signed' : 'alert',
-        actions: [{ id: 'replace', label: 'Reemplazar el original', kind: 'danger' }],
+        actions: [{ id: 'replace', label: t('core.replace.go'), kind: 'danger' }],
       });
       if (!ok) return;
     }
@@ -369,7 +417,7 @@ export default function App() {
     try {
       setTask({ kind: extract ? 'extract' : 'save', done: 0, total: list.length });
       const security = s.security?.kind === 'set' ? { token: s.security.token } : s.security?.kind === 'remove' ? { remove: true } : undefined;
-      const { bytes, warnings, incremental } = await pdf.compose(list, (p) => setTask((t) => (t ? { ...t, ...p } : t)), { security });
+      const { bytes, warnings, incremental } = await pdf.compose(list, (p) => setTask((t) => (t ? { ...t, ...p } : t)), { security, outline: s.outline });
       setTask((t) => (t ? { ...t, done: t.total, writing: true } : t));
       const res = await desktop.savePdf({ bytes, path: target, suggestedName: target.split(/[\\/]/).pop() });
       if (!res) return;
@@ -388,13 +436,13 @@ export default function App() {
         }
       } else if (!extract) dispatch({ type: 'saved', file: res });
       const done = extract
-        ? `Se guardó «${res.name}» con ${list.length} ${list.length === 1 ? 'página' : 'páginas'}.`
-        : plan.redacted ? `Guardado en «${res.name}». Ahora trabajas con esta copia redactada.`
-          : incremental ? `Guardado en «${res.name}» como revisión nueva. La firma sigue siendo válida.` : `Guardado en «${res.name}».`;
-      if (warnings?.length) notify(`${done} Avisos: ${warnings.join(' ')}`, 'error');
+        ? t('core.save.extracted', { name: res.name, count: list.length })
+        : plan.redacted ? t('core.save.redacted', { name: res.name })
+          : incremental ? t('core.save.incremental', { name: res.name }) : t('core.save.done', { name: res.name });
+      if (warnings?.length) notify(t('core.save.withWarnings', { done, warnings: warnings.join(' ') }), 'error');
       else notify(done);
     } catch (e) {
-      notify(`No se pudo guardar: ${e.message}`, 'error');
+      notify(t('core.save.failed', { error: e.message }), 'error');
     } finally {
       setTask(null);
       setBusy(false);
@@ -409,9 +457,9 @@ export default function App() {
     const s = stateRef.current;
     if (s.dirty && s.pages.length) {
       const ok = await ask({
-        title: 'Hay cambios sin guardar',
-        message: 'Si creas un documento nuevo, se perderán los cambios de este.',
-        actions: [{ id: 'new', label: 'Crear sin guardar', kind: 'danger' }],
+        title: t('core.unsaved.title'),
+        message: t('core.unsaved.newMessage'),
+        actions: [{ id: 'new', label: t('core.unsaved.newAnyway'), kind: 'danger' }],
       });
       if (!ok) return;
     }
@@ -420,7 +468,7 @@ export default function App() {
     dispatch({ type: 'open', sources: [], pages, file: null });
     dispatch({ type: 'mode', mode: 'read' });
     setTool('select');
-    notify(`Documento nuevo de ${pages.length === 1 ? '1 página' : `${pages.length} páginas`}. Usa Guardar para elegir dónde guardarlo.`);
+    notify(t('core.new.done', { count: pages.length }));
   }
 
   // --- OCR: reconocer texto en páginas escaneadas ------------------------------------------
@@ -477,17 +525,21 @@ export default function App() {
         done++;
         setTask((t) => (t ? { ...t, done } : t));
       }
-      if (job.cancelled) notify(done ? `OCR cancelado. Se conserva el texto de ${done} de ${list.length} páginas.` : 'OCR cancelado.');
-      else if (!found) notify('No se encontró texto en las páginas reconocidas.', 'error');
-      else notify(`Texto reconocido en ${found === 1 ? '1 página' : `${found} páginas`}. Ya se puede buscar y copiar; se guarda con el documento.`);
+      if (job.cancelled) notify(done ? t('core.ocr.cancelledKept', { done, total: list.length }) : t('core.ocr.cancelled'));
+      else if (!found) notify(t('core.ocr.nothing'), 'error');
+      else notify(t('core.ocr.done', { count: found }));
     } catch (e) {
-      if (!e?.cancelled) notify(`No se pudo reconocer el texto: ${e?.message ?? e}`, 'error');
-      else notify('OCR cancelado.');
+      if (!e?.cancelled) notify(t('core.ocr.failed', { error: e?.message ?? e }), 'error');
+      else notify(t('core.ocr.cancelled'));
     } finally {
       recognizer?.terminate();
       ocrJob.current = null;
       setTask(null);
       setBusy(false);
+      // Pedido desde «Exportar a Word»: se vuelve a él con el texto ya reconocido.
+      const back = afterOcr.current;
+      afterOcr.current = null;
+      if (back && !job.cancelled) setExportKind(back);
     }
   }
 
@@ -512,18 +564,18 @@ export default function App() {
     const locked = stateRef.current.sources.filter((src) => src.security?.encrypted && !src.security.owner && !allAllowed(src.security.perms));
     for (const src of locked) {
       const sec = await askPassword({
-        title: 'Desbloquear permisos',
+        title: t('core.unlock.title'),
         name: `${src.name}.pdf`,
-        message: 'Escribe la contraseña de permisos (de propietario). Con ella se puede hacer todo: editar, imprimir, copiar y cambiar la protección.',
-        label: 'Contraseña de permisos',
-        submitLabel: 'Desbloquear',
-        attempt: (pw) => pdf.unlockOwner(src.docId, pw).then((r) => (r.unlocked ? { value: r } : { error: 'La contraseña de permisos no es correcta.' })),
+        message: t('core.unlock.message'),
+        label: t('core.unlock.label'),
+        submitLabel: t('core.unlock.submit'),
+        attempt: (pw) => pdf.unlockOwner(src.docId, pw).then((r) => (r.unlocked ? { value: r } : { error: t('core.unlock.wrong') })),
       });
       if (!sec) return false;
       const { unlocked, ...security } = sec;
       dispatch({ type: 'sourceSecurity', docId: src.docId, security });
     }
-    if (locked.length) notify(locked.length === 1 ? 'Permisos desbloqueados: ya puedes hacer todo con este PDF.' : 'Permisos desbloqueados.');
+    if (locked.length) notify(locked.length === 1 ? t('core.unlock.doneOne') : t('core.unlock.doneMany'));
     return true;
   }
 
@@ -540,7 +592,7 @@ export default function App() {
     const token = await pdf.setProtection(opts);
     if (old) pdf.dropProtection(old);
     dispatch({ type: 'setSecurity', security: { kind: 'set', token, perms: opts.perms, separateOwner: opts.separateOwner } });
-    notify('El PDF quedará protegido con contraseña (AES-256) al guardarlo.');
+    notify(t('core.protect.set'));
   }
 
   async function unprotect() {
@@ -550,7 +602,7 @@ export default function App() {
     if (s.security?.token) pdf.dropProtection(s.security.token);
     const baseEncrypted = !!baseSource(s)?.security?.encrypted;
     dispatch({ type: 'setSecurity', security: baseEncrypted ? { kind: 'remove' } : null });
-    notify(baseEncrypted ? 'Se quitará la contraseña al guardar.' : 'Ya no se protegerá con contraseña.');
+    notify(baseEncrypted ? t('core.protect.removeOnSave') : t('core.protect.notAnymore'));
   }
 
   // --- Compartir ------------------------------------------------------------------
@@ -558,29 +610,38 @@ export default function App() {
   // principal, que se borra al cerrar; se reutiliza mientras no cambien el documento ni las opciones.
   const [shareOpen, setShareOpen] = useState(false);
   const [prefs, setPrefs] = useState(loadPrefs);
+  prefsRef.current = prefs;
+  // Idioma (Preferencias → Idioma, o el del sistema): la interfaz ya lo tiene desde main.jsx; aquí se aplica al
+  // cambiarlo y se avisa al motor (sus errores y avisos) y al proceso principal (diálogos nativos, menú de macOS).
+  const lang = resolveLang(prefs.lang, systemLanguages());
+  useEffect(() => {
+    setLang(lang, systemLanguages());
+    pdf.setLang(lang, systemLanguages()).catch(() => {});
+    desktop.setLang?.(lang);
+  }, [lang]);
   const [prefsOpen, setPrefsOpen] = useState(false);
   const prepared = useRef(null); // { key, pages, id }
 
   async function shareTo(target, opts) {
     const s = stateRef.current;
     const plan = sharePlan(s, opts, { protectedNow: willBeProtected(s) });
-    if (!plan.pages.length) return { ok: false, text: 'No hay páginas que compartir.' };
+    if (!plan.pages.length) return { ok: false, text: t('core.share.noPages') };
     const key = JSON.stringify([opts.name, opts.scope, opts.hidden, [...s.selected]]);
-    let id = prepared.current?.key === key && prepared.current.pages === s.pages && prepared.current.security === s.security ? prepared.current.id : null;
+    let id = prepared.current?.key === key && prepared.current.pages === s.pages && prepared.current.outline === s.outline && prepared.current.security === s.security ? prepared.current.id : null;
     if (!id) {
       let res;
       if (plan.original) {
         res = await desktop.sharePrepare({ from: s.file.path, name: opts.name });
       } else {
         const security = s.security?.kind === 'set' ? { token: s.security.token } : s.security?.kind === 'remove' ? { remove: true } : undefined;
-        const { bytes } = await pdf.compose(plan.pages, null, { security, hidden: opts.hidden });
+        const { bytes } = await pdf.compose(plan.pages, null, { security, hidden: opts.hidden, outline: s.outline });
         res = await desktop.sharePrepare({ bytes, name: opts.name });
       }
       id = res.id;
-      prepared.current = { key, pages: s.pages, security: s.security, id };
+      prepared.current = { key, pages: s.pages, outline: s.outline, security: s.security, id };
     }
     const call = { whatsapp: desktop.shareWhatsApp, ai: desktop.shareAi, mail: desktop.shareMail, copy: desktop.shareCopyFile, reveal: desktop.shareReveal }[target];
-    if (typeof call !== 'function') return { ok: false, text: 'La aplicación se actualizó mientras estaba abierta. Ciérrala y vuelve a abrirla para compartir.' };
+    if (typeof call !== 'function') return { ok: false, text: t('core.share.outdated') };
     const arg = target === 'mail' ? opts.name.replace(/\.pdf$/i, '') : target === 'ai' ? prefs.ai : undefined;
     const r = await call(id, arg);
     return shareResult(target, r);
@@ -593,22 +654,22 @@ export default function App() {
   const securityArg = (s) => (s.security?.kind === 'set' ? { token: s.security.token } : s.security?.kind === 'remove' ? { remove: true } : undefined);
   function reduceNotices(s) {
     const out = [];
-    if (hasRedactions(s.pages)) out.push({ tone: 'danger', text: 'Las zonas a redactar se aplican en la copia: lo que hay debajo no se podrá recuperar.' });
-    if (signedSources(s).length) out.push({ tone: 'danger', text: 'La firma digital no será válida en la copia reducida.' });
-    if (willBeProtected(s)) out.push({ tone: 'info', text: 'La copia mantiene la contraseña.' });
+    if (hasRedactions(s.pages)) out.push({ tone: 'danger', text: t('core.reduce.noticeRedact') });
+    if (signedSources(s).length) out.push({ tone: 'danger', text: t('core.reduce.noticeSigned') });
+    if (willBeProtected(s)) out.push({ tone: 'info', text: t('core.reduce.noticePassword') });
     return out;
   }
   async function saveReduced(bytes) {
     const s = stateRef.current;
     const original = s.file?.path ?? s.sources.find((x) => x.path)?.path ?? null;
     const base = (s.file?.name ?? s.sources[0]?.name ?? 'documento').replace(/\.pdf$/i, '');
-    const target = await desktop.chooseSavePath({ defaultPath: joinPath(dirOf(original), `${base} (reducido).pdf`) });
+    const target = await desktop.chooseSavePath({ defaultPath: joinPath(outputFolder(prefsRef.current, dirOf(original)), t('core.reduce.fileName', { base })) });
     if (!target) return;
     if (s.sources.some((x) => x.path && samePath(x.path, target))) {
       const ok = await ask({
-        title: 'Vas a reemplazar el original',
-        message: 'La copia reducida sustituirá al archivo original. Las imágenes originales no se podrán recuperar.',
-        actions: [{ id: 'replace', label: 'Reemplazar el original', kind: 'danger' }],
+        title: t('core.replace.title'),
+        message: t('core.reduce.replaceMessage'),
+        actions: [{ id: 'replace', label: t('core.replace.go'), kind: 'danger' }],
       });
       if (!ok) return;
     }
@@ -617,7 +678,7 @@ export default function App() {
     if (!res) return;
     if (res.path) rememberRecent([{ path: res.path }]);
     const before = !s.dirty && s.file && s.sources.length === 1 ? s.sources[0].size : null;
-    notify(`Guardado «${res.name}»${before ? `: ${sizeChange(before, bytes.length)}` : ''}.`);
+    notify(before ? t('core.reduce.savedChange', { name: res.name, change: sizeChange(before, bytes.length) }) : t('core.reduce.saved', { name: res.name }));
   }
 
   // --- Imprimir -------------------------------------------------------------------
@@ -660,10 +721,10 @@ export default function App() {
       setTask((t) => (t ? { ...t, phase: 'send', done: 0, total: 0 } : t));
       const r = await desktop.printRun(job);
       job = null;
-      if (r?.ok) notify(list.length === 1 ? 'Se envió 1 página a imprimir.' : `Se enviaron ${list.length} páginas a imprimir.`);
-      else if (!r?.cancelled && r?.error) notify(`No se pudo imprimir: ${r.error}`, 'error');
+      if (r?.ok) notify(t('core.print.sent', { count: list.length }));
+      else if (!r?.cancelled && r?.error) notify(t('core.print.failed', { error: r.error }), 'error');
     } catch (e) {
-      notify(`No se pudo imprimir: ${e.message}`, 'error');
+      notify(t('core.print.failed', { error: e.message }), 'error');
     } finally {
       off?.();
       if (job) desktop.printCancel?.(job);
@@ -686,7 +747,7 @@ export default function App() {
   async function insertImages(files) {
     if (!files?.length) return;
     const ok = files.filter((f) => /^image\/(png|jpeg)$/.test(f.type) || /\.(png|jpe?g)$/i.test(f.name));
-    if (ok.length < files.length) notify('Solo se pueden insertar imágenes PNG o JPG.', 'error');
+    if (ok.length < files.length) notify(t('core.insert.onlyImages'), 'error');
     const pages = [];
     for (const f of ok) {
       try {
@@ -694,12 +755,12 @@ export default function App() {
         pages.push(imagePage({ blob: f, pxW: bmp.width, pxH: bmp.height, name: f.name }));
         bmp.close();
       } catch {
-        notify(`No se pudo leer la imagen «${f.name}».`, 'error');
+        notify(t('core.insert.unreadable', { name: f.name }), 'error');
       }
     }
     if (!pages.length) return;
     act({ type: 'add', pages, sources: [], at: insertIndex(stateRef.current) });
-    notify(pages.length === 1 ? 'Se insertó la imagen como página.' : `Se insertaron ${pages.length} imágenes como páginas.`);
+    notify(t('core.insert.done', { count: pages.length }));
   }
 
   // --- Comandos (menú, barra de herramientas y teclado) -----------------------
@@ -721,6 +782,12 @@ export default function App() {
         if (!s.pages.length) break;
         if (!policyRef.current.content) { notify(policyRef.current.notice, 'error'); break; }
         setReduceOpen(true);
+        break;
+      case 'exportExcel':
+      case 'exportWord':
+        if (!s.pages.length) break;
+        if (!policyRef.current.copy) { notify(policyRef.current.notice, 'error'); break; }
+        setExportKind(cmd === 'exportWord' ? 'word' : 'excel');
         break;
       case 'prefs': setPrefsOpen(true); break;
       case 'protect':
@@ -745,7 +812,7 @@ export default function App() {
         break;
       case 'openRecent': if (typeof arg === 'string') openRecent(arg); break;
       case 'clearRecents':
-        Promise.resolve().then(() => desktop.clearRecents?.()).then(() => notify('Se borró la lista de archivos recientes.')).catch(() => {});
+        Promise.resolve().then(() => desktop.clearRecents?.()).then(() => notify(t('core.recent.cleared'))).catch(() => {});
         break;
       case 'duplicate':
         if (s.annotSel) act({ type: 'duplicateAnnot', key: s.annotSel.key, id: s.annotSel.id });
@@ -870,7 +937,7 @@ export default function App() {
     if (fallback !== !!a.fallback) act({ type: 'updateAnnot', key: page.key, id: a.id, changes: { fallback }, group });
     if (fallback) {
       const letters = missing.slice(0, 5).map((c) => `«${c}»`).join(', ');
-      notify(`La fuente «${a.style.pdf.name}» del PDF no tiene ${letters}: se usa ${FAMILIES[a.style.family].label}, la más parecida.`);
+      notify(t('core.textbox.fallback', { font: a.style.pdf.name, letters, family: FAMILIES[a.style.family].label }));
     }
   }
 
@@ -916,7 +983,7 @@ export default function App() {
     const disp = { x: (1 - w) / 2, y: (1 - h) / 2, w, h };
     act({ type: 'addAnnot', key: page.key, annot: { type: 'image', rect: rectFromDisplay(disp, R), k: R, src } });
     setTool('select');
-    notify('Firma colocada. Arrástrala a su sitio y ajusta el tamaño con la esquina.');
+    notify(t('core.signature.placed'));
   }
 
   // --- Buscar y copiar texto ------------------------------------------------------
@@ -958,11 +1025,11 @@ export default function App() {
       document.execCommand('copy');
       ta.remove();
     }
-    notify('Texto copiado.');
+    notify(t('core.copy.done'));
   }
 
   // --- Menú -------------------------------------------------------------------
-  const menu = useMemo(() => menuModel({ dev: import.meta.env.DEV, web: desktop.platform === 'web', recents }), [recents]);
+  const menu = useMemo(() => menuModel({ dev: import.meta.env.DEV, web: desktop.platform === 'web', recents }), [recents, getLang()]); // eslint-disable-line react-hooks/exhaustive-deps -- etiquetas en el idioma actual
   const hasTargetsNow = targetKeys(state).size > 0;
   const has = state.pages.length > 0;
   const idle = !busy;
@@ -974,7 +1041,7 @@ export default function App() {
     rotateLeft: idle && hasTargetsNow && policy.pages, rotateRight: idle && hasTargetsNow && policy.pages,
     delete: idle && hasTargetsNow && (policy.pages || !!state.annotSel),
     new: idle, ocr: idle && ocrTargets.length > 0 && policy.content, print: idle && has && policy.print,
-    share: idle && has, reduce: idle && has && policy.content, protect: idle && has, unprotect: idle && has && willBeProtected(state),
+    share: idle && has, exportExcel: idle && has && policy.copy, exportWord: idle && has && policy.copy, reduce: idle && has && policy.content, protect: idle && has, unprotect: idle && has && willBeProtected(state),
     unlock: idle && state.sources.some((src) => src.security?.encrypted && !src.security.owner && !allAllowed(src.security.perms)), openRecent: idle, clearRecents: true, none: false,
     organize: has, read: has, zoomIn: has && state.mode === 'read', zoomOut: has && state.mode === 'read', zoomFit: has && state.mode === 'read',
   };
@@ -1023,7 +1090,7 @@ export default function App() {
   }, []);
 
   // Título de ventana y aviso de cambios sin guardar al cerrar.
-  const docName = state.file?.name ?? (state.pages.length ? 'Documento sin guardar' : null);
+  const docName = state.file?.name ?? (state.pages.length ? t('core.app.untitled') : null);
   useEffect(() => {
     desktop.setTitle(docName ? `${state.dirty && desktop.platform !== 'darwin' ? '● ' : ''}${docName} – SpiderPDF` : 'SpiderPDF');
     desktop.setDirty(state.dirty);
@@ -1032,7 +1099,7 @@ export default function App() {
   const showOpening = useDelayed(task?.kind === 'open');
   const showSaving = useDelayed(task?.kind === 'save' || task?.kind === 'extract' || task?.kind === 'print' || task?.kind === 'ocr');
   const preparing = useDelayed(!engineReady);
-  const savingLabel = task?.kind === 'save' ? 'Guardando…' : task?.kind === 'extract' ? 'Extrayendo…' : null;
+  const savingLabel = task?.kind === 'save' ? t('core.task.saving') : task?.kind === 'extract' ? t('core.task.extracting') : null;
   const hasTargets = targetKeys(state).size > 0;
   const empty = !state.pages.length;
   const tools = useMemo(() => allowedTools(policy), [policy]);
@@ -1045,7 +1112,7 @@ export default function App() {
       {customMenu && (
         <TitleBar model={menu} title={docName} dirty={state.dirty} isEnabled={isEnabled} onCommand={command} />
       )}
-      <Toolbar state={state} hasTargets={hasTargets} busy={busy} run={run} savingLabel={savingLabel} canPages={policy.pages} />
+      <Toolbar state={state} hasTargets={hasTargets} busy={busy} run={run} savingLabel={savingLabel} canPages={policy.pages} canExport={policy.copy} />
       {state.mode === 'read' && !empty && (
         <AnnotToolbar
           allowed={tools}
@@ -1071,7 +1138,7 @@ export default function App() {
       {newOpen && <NewDocumentDialog onCancel={() => setNewOpen(false)} onCreate={createDocument} />}
       {shareOpen && (
         <ShareDialog
-          name={shareName(docName)}
+          name={shareName(state.file?.name ?? null)}
           total={state.pages.length}
           selected={state.selected.size}
           notices={(o) => sharePlan(state, o, { protectedNow: willBeProtected(state) }).notices}
@@ -1082,9 +1149,10 @@ export default function App() {
       )}
       {reduceOpen && (
         <ReduceDialog
+          initialLevel={prefs.quality}
           before={!state.dirty && state.file && state.sources.length === 1 ? state.sources[0].size : null}
           notices={reduceNotices(state)}
-          run={(level, onProgress) => pdf.reduceJob(state.pages, { level, security: securityArg(state), docIds: state.sources.map((x) => x.docId) }, onProgress)}
+          run={(level, onProgress) => pdf.reduceJob(state.pages, { level, security: securityArg(state), docIds: state.sources.map((x) => x.docId), outline: state.outline }, onProgress)}
           onCancel={() => setReduceOpen(false)}
           onSave={saveReduced}
         />
@@ -1093,7 +1161,13 @@ export default function App() {
         <PreferencesDialog
           prefs={prefs}
           onCancel={() => setPrefsOpen(false)}
-          onSave={(p) => { setPrefs(savePrefs(p)); setPrefsOpen(false); notify('Preferencias guardadas.'); }}
+          onSave={(p) => {
+            const saved = savePrefs(p);
+            setLang(resolveLang(saved.lang, systemLanguages()), systemLanguages()); // ya en este pintado (el aviso, también)
+            setPrefs(saved);
+            setPrefsOpen(false);
+            notify(t('core.prefs.saved'));
+          }}
         />
       )}
       {protectOpen && (
@@ -1121,7 +1195,59 @@ export default function App() {
           }}
         />
       )}
-      {ocrOpen && <OcrDialog scanned={ocrPending.length} total={ocrTargets.length} onCancel={() => setOcrOpen(false)} onRun={runOcr} />}
+      {exportKind === 'word' && (
+        <WordDialog
+          pages={state.pages}
+          scannedPending={ocrPending.length}
+          onCancel={() => setExportKind(null)}
+          onOcr={() => { setExportKind(null); afterOcr.current = 'word'; setOcrOpen(true); }}
+          onExport={async ({ layout, images, pageBreaks }) => {
+            if (typeof desktop.exportSave !== 'function') throw new Error(t('core.app.restart'));
+            const s = stateRef.current;
+            const base = (s.file?.name ?? s.sources[0]?.name ?? 'documento').replace(/.pdf$/i, '');
+            const [docx, { buildDocx }] = await Promise.all([import('docx'), import('./export/docx.js')]);
+            const bytes = await buildDocx(docx, layout, { title: base, images, pageBreaks, author: prefsRef.current.userName });
+            const from = s.file?.path ?? s.sources.find((x) => x.path)?.path;
+            const saved = await desktop.exportSave({ bytes, kind: 'docx', defaultPath: joinPath(outputFolder(prefsRef.current, dirOf(from)), `${base}.docx`) });
+            if (saved) exported(saved, t('core.export.openWord'));
+            return saved;
+          }}
+        />
+      )}
+      {exportKind === 'excel' && (
+        <ExcelDialog
+          pages={state.pages}
+          onCancel={() => setExportKind(null)}
+          onExport={async ({ tables, mode }) => {
+            if (typeof desktop.exportSave !== 'function') throw new Error(t('core.app.restart'));
+            const s = stateRef.current;
+            const base = (s.file?.name ?? s.sources[0]?.name ?? 'documento').replace(/.pdf$/i, '');
+            const { default: ExcelJS } = await import('exceljs');
+            const { buildXlsx } = await import('./export/xlsx.js');
+            const bytes = await buildXlsx(ExcelJS, tables, { mode, title: base, author: prefsRef.current.userName });
+            const from = s.file?.path ?? s.sources.find((x) => x.path)?.path;
+            const saved = await desktop.exportSave({ bytes, kind: 'xlsx', defaultPath: joinPath(outputFolder(prefsRef.current, dirOf(from)), `${base}.xlsx`) });
+            if (saved) exported(saved, t('core.export.openExcel'));
+            return saved;
+          }}
+        />
+      )}
+      {tocDialog && (
+        <TocDialog
+          pages={state.pages}
+          tocPages={tocDialog.tocPages}
+          initial={tocDialog.initial ?? null}
+          onCancel={() => setTocDialog(null)}
+          onCreate={(tree) => {
+            const editing = !!tocDialog.initial;
+            setTocDialog(null);
+            const count = (nodes) => nodes.reduce((k, x) => k + 1 + count(x.children), 0);
+            act({ type: 'setOutline', outline: tree });
+            notify(editing ? t('core.toc.updated') : t('core.toc.created', { count: count(tree) }));
+          }}
+        />
+      )}
+      {ocrOpen && <OcrDialog scanned={ocrPending.length} total={ocrTargets.length} onCancel={() => { afterOcr.current = null; setOcrOpen(false); }} onRun={runOcr} />}
       {!empty && ocrPending.length > 0 && !ocrHidden && !busy && policy.content && (
         <OcrBanner count={ocrPending.length} onRun={() => run('ocr')} onClose={() => setOcrHidden(true)} />
       )}
@@ -1148,17 +1274,18 @@ export default function App() {
             onDrop={(e) => { e.preventDefault(); setFileOver(false); dropFiles(e.dataTransfer.files); }}
           />
         ) : state.mode === 'organize' ? (
-          <ErrorBoundary name="Organizar" resetKey={state.mode}>
+          <ErrorBoundary name={t('core.toolbar.organize')} resetKey={state.mode}>
           <OrganizeView
             state={state}
             dispatch={act}
             canPages={policy.pages}
+            onAdd={() => run('add')}
             onDropFiles={dropFiles}
             onOpenPage={(i) => { dispatch({ type: 'current', index: i }); dispatch({ type: 'mode', mode: 'read' }); }}
           />
           </ErrorBoundary>
         ) : (
-          <ErrorBoundary name="Leer" resetKey={state.mode}>
+          <ErrorBoundary name={t('core.toolbar.read')} resetKey={state.mode}>
             <ReaderView
               ref={readerRef} state={state} dispatch={act} tool={tool} colors={colors} conflicts={conflicts} policy={policy}
               textSel={textSel} onTextSel={setTextSel}
@@ -1168,6 +1295,14 @@ export default function App() {
                 onEditBox: (key, id) => setEditingBox({ key, id }),
                 onDoneBox: finishTextBox,
                 onCreateTextBox: createTextBox,
+              }}
+              onLink={followLink}
+              outlineProps={{
+                custom: state.outline,
+                canEdit: policy.pages,
+                editWhy: policy.notice,
+                onCreateToc: (tocPages) => setTocDialog({ tocPages }),
+                onEditToc: () => setTocDialog({ tocPages: [], initial: state.outline }),
               }}
             />
           </ErrorBoundary>
@@ -1189,6 +1324,15 @@ export default function App() {
               ? <CircleAlert size={18} strokeWidth={1.75} className="mt-0.5 shrink-0" aria-hidden="true" />
               : <CircleCheck size={18} strokeWidth={1.75} className="mt-0.5 shrink-0 text-accent" aria-hidden="true" />}
             <span>{toast.text}</span>
+            {toast.action && (
+              <button
+                type="button"
+                onClick={() => { const a = toast.action; setToast(null); a.run(); }}
+                className="-my-1 -mr-1.5 h-8 shrink-0 rounded-lg px-2.5 font-medium text-accent-ink transition-[background-color,scale] hover:bg-accent-soft active:scale-[0.98]"
+              >
+                {toast.action.label}
+              </button>
+            )}
           </div>
         )}
       </main>
@@ -1199,18 +1343,19 @@ export default function App() {
 }
 
 function EmptyState({ busy, preparing, fileOver, onOpen, onNew, ...drop }) {
+  const t = useT();
   return (
     <div {...drop} className="grid h-full place-items-center bg-desk p-8">
       <div className={`flex w-full max-w-[440px] flex-col items-center rounded-2xl border-2 border-dashed px-8 py-10 text-center transition-colors ${fileOver ? 'border-accent bg-accent-soft' : 'border-line-strong bg-panel/60'}`}>
         <AppIcon size={88} alt="SpiderPDF" className={`mb-6 transition-transform duration-150 ease-out ${fileOver ? 'scale-110' : ''}`} />
-        <h1 className="text-xl font-semibold tracking-tight">{fileOver ? 'Suéltalo para abrirlo' : 'Abre un PDF para empezar'}</h1>
+        <h1 className="text-xl font-semibold tracking-tight">{fileOver ? t('core.empty.drop') : t('core.empty.title')}</h1>
         <p className="mt-2 text-muted">
-          Arrástralo a esta ventana o elígelo desde tu equipo. Si eliges varios, se unen en un solo documento.
+          {t('core.empty.hint')}
         </p>
         {preparing ? (
           <p role="status" className="mt-6 flex h-9 items-center gap-2 text-sm text-muted">
             <LoaderCircle size={16} strokeWidth={1.75} className="spin" aria-hidden="true" />
-            Preparando el editor…
+            {t('core.empty.preparing')}
           </p>
         ) : (
           <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
@@ -1218,10 +1363,10 @@ function EmptyState({ busy, preparing, fileOver, onOpen, onNew, ...drop }) {
               type="button"
               onClick={onOpen}
               disabled={busy}
-              className="flex h-9 items-center gap-2 rounded-lg bg-accent px-3.5 text-sm font-medium text-on-accent transition-[background-color,scale] hover:bg-accent/90 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
+              className="flex h-9 items-center gap-2 rounded-lg bg-inverse px-3.5 text-sm font-medium text-on-inverse transition-[background-color,scale] hover:bg-inverse-hover active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
             >
               <FolderOpen size={16} strokeWidth={1.75} />
-              {busy ? 'Abriendo…' : 'Abrir PDF'}
+              {busy ? t('core.empty.opening') : t('core.empty.open')}
             </button>
             <button
               type="button"
@@ -1230,7 +1375,7 @@ function EmptyState({ busy, preparing, fileOver, onOpen, onNew, ...drop }) {
               className="flex h-9 items-center gap-2 rounded-lg px-3.5 text-sm font-medium transition-[background-color,scale] hover:bg-hover active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
             >
               <FilePlus2 size={16} strokeWidth={1.75} className="text-muted" />
-              Nuevo documento
+              {t('core.empty.new')}
             </button>
           </div>
         )}
@@ -1241,20 +1386,21 @@ function EmptyState({ busy, preparing, fileOver, onOpen, onNew, ...drop }) {
 
 /** Aviso bajo la barra de herramientas: hay páginas escaneadas cuyo texto no se puede buscar. */
 function OcrBanner({ count, onRun, onClose }) {
+  const t = useT();
   return (
     <div role="status" className="flex shrink-0 items-center gap-3 border-b border-line bg-accent-soft px-4 py-2 text-sm text-accent-ink">
       <ScanText size={16} strokeWidth={1.75} className="shrink-0" aria-hidden="true" />
       <span className="min-w-0 flex-1 truncate">
-        {count === 1 ? 'Una página es una imagen escaneada' : `${count} páginas son imágenes escaneadas`}: su texto no se puede buscar ni copiar.
+        {t('core.ocrBanner.text', { count })}
       </span>
       <button
         type="button"
         onClick={onRun}
-        className="h-8 shrink-0 rounded-lg bg-accent px-3 text-sm font-medium text-on-accent transition-[background-color,scale] hover:bg-accent/90 active:scale-[0.98]"
+        className="h-8 shrink-0 rounded-lg bg-inverse px-3 text-sm font-medium text-on-inverse transition-[background-color,scale] hover:bg-inverse-hover active:scale-[0.98]"
       >
-        Reconocer texto (OCR)
+        {t('core.ocrBanner.run')}
       </button>
-      <button type="button" onClick={onClose} aria-label="Cerrar el aviso" title="Cerrar el aviso" className="grid size-8 shrink-0 place-items-center rounded-lg transition-colors hover:bg-accent/10">
+      <button type="button" onClick={onClose} aria-label={t('core.ocrBanner.close')} title={t('core.ocrBanner.close')} className="grid size-8 shrink-0 place-items-center rounded-lg transition-colors hover:bg-accent/10">
         <X size={16} strokeWidth={1.75} />
       </button>
     </div>
@@ -1282,6 +1428,7 @@ function ProgressBar({ done, total, className = '' }) {
 
 /** Tarjeta de «Abriendo…» en la zona de trabajo (solo si tarda más de 300 ms). */
 function OpeningCard({ task, onCancel }) {
+  const t = useT();
   if (!task) return null;
   const many = task.count > 1;
   return (
@@ -1292,17 +1439,17 @@ function OpeningCard({ task, onCancel }) {
             <FileText size={20} strokeWidth={1.75} />
           </span>
           <div className="min-w-0 flex-1">
-            <p className="text-sm text-muted">{many ? `Abriendo ${task.index} de ${task.count}` : 'Abriendo'}</p>
+            <p className="text-sm text-muted">{many ? t('core.opening.many', { index: task.index, count: task.count }) : t('core.opening.one')}</p>
             <p className="truncate text-base font-semibold tracking-tight" title={task.name}>{task.name}</p>
           </div>
         </div>
         <ProgressBar done={task.done} total={task.total} className="mt-4" />
         <div className="mt-3 flex items-center justify-between gap-3">
           <span className="tabnum text-xs text-muted">
-            {task.total ? `Leyendo páginas… ${task.done} de ${task.total}` : 'Leyendo el archivo…'}
+            {task.total ? t('core.opening.pages', { done: task.done, total: task.total }) : t('core.opening.file')}
           </span>
-          <button type="button" onClick={onCancel} className="h-8 rounded-lg border border-line px-3 text-sm font-medium transition-colors hover:bg-hover">
-            Cancelar
+          <button type="button" onClick={onCancel} className="v-btn-secondary v-btn--sm">
+            {t('core.common.cancel')}
           </button>
         </div>
       </div>
@@ -1311,28 +1458,29 @@ function OpeningCard({ task, onCancel }) {
 }
 
 function StatusBar({ state, docName, tool, task, sigGroups, policy, locked }) {
+  const t = useT();
   const n = state.pages.length;
   let hint = '';
   let pageInfo = '';
   if (n && state.mode === 'read') {
-    const h = TOOLS.find((t) => t.id === tool)?.hint;
-    if (h && tool !== 'select') hint = h;
-    pageInfo = `Página ${state.current + 1} de ${n}`;
+    const h = TOOLS.find((x) => x.id === tool)?.hint;
+    if (h && tool !== 'select') hint = t(h);
+    pageInfo = t('core.status.pageOf', { n: state.current + 1, total: n });
   } else if (!policy.pages) hint = '';
-  else if (state.selected.size > 1) hint = `${state.selected.size} páginas seleccionadas. Arrástralas para moverlas juntas.`;
-  else if (n) hint = 'Arrastra las páginas para ordenarlas. Mayús o Ctrl para seleccionar varias.';
-  const verb = task?.kind === 'extract' ? 'Extrayendo' : 'Guardando';
+  else if (state.selected.size > 1) hint = t('core.status.dragSelected', { count: state.selected.size });
+  else if (n) hint = t('core.status.dragHint');
+  const saving = task?.kind === 'extract' ? 'core.task.extracting' : 'core.task.saving';
   return (
     <footer className="flex h-8 shrink-0 items-center justify-between gap-4 border-t border-line bg-panel px-3.5 text-xs text-muted">
       <span className="min-w-0 shrink truncate">
         {docName && <span className="font-medium text-ink">{docName}</span>}
-        {n > 0 && <span className="tabnum ml-3">{n} {n === 1 ? 'página' : 'páginas'}</span>}
+        {n > 0 && <span className="tabnum ml-3">{t('core.status.pages', { count: n })}</span>}
         {locked && (
-          <span className="ml-3 inline-flex items-center gap-1" title={policy.level === 'protected' ? policy.notice : 'Protegido con contraseña (AES-256)'}>
-            <LockKeyhole size={12} strokeWidth={1.75} className="text-accent" aria-hidden="true" />Protegido
+          <span className="ml-3 inline-flex items-center gap-1" title={policy.level === 'protected' ? policy.notice : t('core.status.protectedTitle')}>
+            <LockKeyhole size={12} strokeWidth={1.75} className="text-accent" aria-hidden="true" />{t('core.status.protected')}
           </span>
         )}
-        {state.dirty && <span className="ml-3 inline-flex items-center gap-1.5"><span className="size-1.5 rounded-full bg-accent" aria-hidden="true" />Cambios sin guardar</span>}
+        {state.dirty && <span className="ml-3 inline-flex items-center gap-1.5"><span className="size-1.5 rounded-full bg-accent" aria-hidden="true" />{t('core.status.unsaved')}</span>}
       </span>
       {sigGroups.length > 0 && (
         <span role="status" className="-ml-4 flex min-w-0 flex-1 items-center">
@@ -1345,17 +1493,17 @@ function StatusBar({ state, docName, tool, task, sigGroups, policy, locked }) {
             <ProgressBar done={task.done} total={task.total} className="w-32" />
             <span className="tabnum whitespace-nowrap">
               {task.kind === 'ocr'
-                ? task.cancelling ? 'Cancelando…' : task.loading ? 'Preparando el reconocimiento de texto…' : `Reconociendo texto… página ${Math.min(task.done + 1, task.total)} de ${task.total}`
+                ? task.cancelling ? t('core.task.cancelling') : task.loading ? t('core.task.ocrLoading') : t('core.task.ocrPage', { n: Math.min(task.done + 1, task.total), total: task.total })
                 : task.kind === 'print'
                 ? task.phase === 'send'
-                  ? (task.total ? `Enviando a la impresora… ${task.done} de ${task.total}` : 'Enviando a la impresora…')
-                  : `Preparando impresión… ${task.done} de ${task.total}`
+                  ? (task.total ? t('core.task.printSending', { done: task.done, total: task.total }) : t('core.task.printSendingNoTotal'))
+                  : t('core.task.printPreparing', { done: task.done, total: task.total })
                 : task.writing
-                  ? `${verb}… escribiendo el archivo`
-                  : `${verb}… página ${Math.min(task.done + 1, task.total)} de ${task.total}`}
+                  ? t(`${saving}Writing`)
+                  : t(`${saving}Page`, { n: Math.min(task.done + 1, task.total), total: task.total })}
             </span>
             {task.cancel && !task.cancelling && (
-              <button type="button" onClick={task.cancel} className="h-6 rounded-md px-2 text-xs font-medium text-ink transition-colors hover:bg-hover">Cancelar</button>
+              <button type="button" onClick={task.cancel} className="v-btn-ghost v-btn--sm">{t('core.common.cancel')}</button>
             )}
           </span>
         ) : hint && <span className="truncate">{hint}</span>}
