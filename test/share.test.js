@@ -77,7 +77,7 @@ t('Enviar a IA: textos según app o web, y si se copió', () => {
 });
 
 t('preferencias: por defecto Claude; solo valores conocidos', () => {
-  const D = { ai: 'claude', userName: '', outputDir: '', quality: 'balanced', lang: 'auto', restoreTabs: false, autoUpdate: true };
+  const D = { ai: 'claude', userName: '', outputDir: '', quality: 'balanced', lang: 'auto', restoreTabs: false, autoUpdate: true, theme: 'auto' };
   assert.deepEqual(normalizePrefs({}), D);
   assert.deepEqual(normalizePrefs({ ai: 'chatgpt' }), { ...D, ai: 'chatgpt' });
   assert.deepEqual(normalizePrefs({ ai: 'https://malo', extra: 1 }), D);
@@ -100,6 +100,9 @@ t('preferencias: nombre, carpeta de salida y calidad de compresión', () => {
   // Buscar actualizaciones: activado salvo que se desactive.
   assert.equal(normalizePrefs({ autoUpdate: false }).autoUpdate, false);
   assert.equal(normalizePrefs({ autoUpdate: 'no' }).autoUpdate, true);
+  // Tema: automático, claro u oscuro; cualquier otra cosa, automático.
+  assert.equal(normalizePrefs({ theme: 'dark' }).theme, 'dark');
+  assert.equal(normalizePrefs({ theme: 'sepia' }).theme, 'auto');
   // Carpeta para un archivo nuevo: la de salida o, si no hay, la del original.
   assert.equal(outputFolder({ outputDir: 'D:\\Salida' }, 'C:\\Docs'), 'D:\\Salida');
   assert.equal(outputFolder({ outputDir: '' }, 'C:\\Docs'), 'C:\\Docs');

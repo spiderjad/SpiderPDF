@@ -8,7 +8,7 @@ function subscribe(channel, cb) {
 
 contextBridge.exposeInMainWorld('desktop', {
   platform: process.platform,
-  apiVersion: 12, // = DESKTOP_API de src/desktop.js y de main.cjs (subirlas a la vez)
+  apiVersion: 13, // = DESKTOP_API de src/desktop.js y de main.cjs (subirlas a la vez)
   mainApiVersion: () => ipcRenderer.invoke('app:apiVersion'),
   openPdfs: () => ipcRenderer.invoke('dialog:open'),
   pendingFiles: () => ipcRenderer.invoke('files:pending'),
@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld('desktop', {
   chooseSavePath: (opts) => ipcRenderer.invoke('dialog:saveAs', opts),
   chooseFolder: (opts) => ipcRenderer.invoke('dialog:chooseFolder', opts),
   setLang: (lang) => ipcRenderer.send('app:setLang', String(lang)),
+  setTheme: (theme) => ipcRenderer.send('app:setTheme', String(theme)),
   pathForFile: (file) => webUtils.getPathForFile(file),
   verifySignatures: (bytes) => ipcRenderer.invoke('pdf:verifySignatures', bytes),
   recents: () => ipcRenderer.invoke('recents:list'),

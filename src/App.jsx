@@ -37,6 +37,7 @@ import { hasRedactions, dirOf, joinPath, samePath } from './savePlan.js';
 import { sharePlan, shareName, shareResult, AI_PROVIDERS } from './share.js';
 import PreferencesDialog from './components/PreferencesDialog.jsx';
 import { loadPrefs, savePrefs, outputFolder } from './prefs.js';
+import { applyTheme } from './theme.js';
 import { canChangeSecurity, choicesFrom, allAllowed } from './security.js';
 import SignatureStatus from './components/SignatureStatus.jsx';
 import { pdf } from './engine/client.js';
@@ -776,6 +777,8 @@ export default function App() {
   const [shareOpen, setShareOpen] = useState(false);
   const [prefs, setPrefs] = useState(loadPrefs);
   prefsRef.current = prefs;
+  // Tema (Preferencias → Tema): al arrancar ya se puso en main.jsx; aquí, al cambiarlo (también desde otra ventana).
+  useEffect(() => { applyTheme(prefs.theme); }, [prefs.theme]);
   // Otra ventana cambió las Preferencias (mismo almacenamiento): aquí también (idioma, recordar pestañas…).
   useEffect(() => {
     const onStorage = (e) => { if (e.key === 'spiderpdf:prefs') setPrefs(loadPrefs()); };

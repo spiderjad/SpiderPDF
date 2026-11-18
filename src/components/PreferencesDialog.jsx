@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { AI_PROVIDERS } from '../share.js';
 import { REDUCE_LEVELS } from '../reduce.js';
-import { NAME_MAX } from '../prefs.js';
+import { NAME_MAX, THEMES } from '../prefs.js';
 import { desktop } from '../desktop.js';
 import { useT, LANG_NAMES, detectLang } from '../i18n/index.js';
 import './PreferencesDialog.css';
 
 /**
- * Editar → Preferencias… (Ctrl+,): idioma, tu nombre, la carpeta de salida por defecto, la calidad de «Reducir
+ * Editar → Preferencias… (Ctrl+,): idioma, tema (claro u oscuro), tu nombre, la carpeta de salida por defecto, la calidad de «Reducir
  * tamaño», la IA de «Enviar a IA», si al abrir se recuperan las pestañas de la última vez y las actualizaciones
  * (buscar al abrir, «Buscar ahora», la versión instalada; update = estado de electron/updater.cjs). onSave(prefs) guarda (src/prefs.js); onCancel no cambia nada.
  * Hecha con spider-ui (clases v-*, guía en node_modules/spider-ui/GUIDE.md): v-dialog (<dialog> nativo modal, que
@@ -30,6 +30,7 @@ export default function PreferencesDialog({ prefs, update = null, onCheckUpdate,
   const t = useT();
   const ref = useRef(null);
   const [lang, setLangPref] = useState(prefs.lang ?? 'auto');
+  const [theme, setTheme] = useState(prefs.theme ?? 'auto');
   const [userName, setUserName] = useState(prefs.userName ?? '');
   const [outputDir, setOutputDir] = useState(prefs.outputDir ?? '');
   const [quality, setQuality] = useState(prefs.quality ?? 'balanced');
@@ -72,7 +73,7 @@ export default function PreferencesDialog({ prefs, update = null, onCheckUpdate,
   function submit(e) {
     e.preventDefault();
     if (nameTooLong) return;
-    onSave({ ...prefs, lang, userName, outputDir, quality, ai, restoreTabs, autoUpdate });
+    onSave({ ...prefs, lang, theme, userName, outputDir, quality, ai, restoreTabs, autoUpdate });
   }
 
   return (
@@ -97,6 +98,18 @@ export default function PreferencesDialog({ prefs, update = null, onCheckUpdate,
             </select>
             <p className="v-help" id="prefs-idioma-ayuda">{t('core.prefs.languageHelp')}</p>
           </div>
+
+          <fieldset className="v-field cfg-fieldset">
+            <legend className="v-label">{t('core.prefs.theme')}</legend>
+            <div className="cfg-options">
+              {THEMES.map((id) => (
+                <label key={id} className="cfg-option">
+                  <input type="radio" name="prefs-tema" value={id} checked={theme === id} onChange={() => setTheme(id)} />
+                  {t(`core.prefs.theme.${id}`)}
+                </label>
+              ))}
+            </div>
+          </fieldset>
 
           <div className="v-field">
             <label className="v-label" htmlFor="prefs-nombre">{t('core.prefs.name')}</label>

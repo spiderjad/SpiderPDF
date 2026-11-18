@@ -4,6 +4,7 @@ import { migrateStorage } from './storageMigration.js';
 import { setLang, resolveLang, setPlatform } from './i18n/index.js';
 import { desktop } from './desktop.js';
 import { loadPrefs } from './prefs.js';
+import { applyTheme } from './theme.js';
 import 'spider-ui/spider-ui.css'; // sistema de diseño spider-ui (clases v-*): una sola vez, antes del CSS propio
 import './index.css';
 
@@ -16,5 +17,7 @@ setPlatform(desktop.platform === 'web' && /Mac/.test(navigator.platform) ? 'darw
 // Idioma antes de pintar: el de Preferencias o, en «Automático», el del sistema (src/i18n).
 const languages = [...(navigator.languages ?? [navigator.language])];
 setLang(resolveLang(loadPrefs().lang, languages), languages);
+// Tema antes de pintar (Preferencias → Tema), para que no parpadee.
+applyTheme(loadPrefs().theme);
 
 createRoot(document.getElementById('root')).render(<App />);

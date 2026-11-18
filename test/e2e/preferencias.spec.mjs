@@ -120,3 +120,38 @@ test('la ruedita junto a «Ver» abre las Preferencias', async () => {
   await expect(win.getByRole('dialog', { name: 'Preferencias' })).toHaveCount(0);
   await app.close();
 });
+
+test('Tema: oscuro, claro o el del sistema; cambia al momento (también la barra de título) y se recuerda', async () => {
+  const dir = await tempDir();
+  let { app, win } = await launch(dir);
+  const prefs = () => win.getByRole('dialog', { name: 'Preferencias' }); // la de la ventana de ahora
+  const choose = async (name) => {
+    await win.keyboard.press('Control+,');
+    await prefs().getByRole('radio', { name }).check();
+    await prefs().getByRole('button', { name: 'Guardar' }).click();
+    await expect(prefs()).toHaveCount(0);
+  };
+  const state = () => Promise.all([
+    win.evaluate(() => document.documentElement.dataset.theme ?? null),
+    app.evaluate(({ nativeTheme }) => nativeTheme.themeSource),
+  ]);
+  await win.keyboard.press('Control+,');
+  await expect(prefs().getByRole('radio', { name: 'Automático (el del sistema)' })).toBeChecked();
+  await win.keyboard.press('Escape');
+
+  await choose('Oscuro');
+  await expect.poll(state).toEqual(['dark', 'dark']);
+  const bg = await win.evaluate(() => getComputedStyle(document.querySelector('header')).backgroundColor);
+  expect(bg).toBe('rgb(10, 10, 10)'); // --sp-bg oscuro
+  await app.close();
+
+  // Se recuerda: la ventana nueva ya sale oscura.
+  ({ app, win } = await launch(dir));
+  await expect.poll(state).toEqual(['dark', 'dark']);
+  await choose('Claro');
+  await expect.poll(state).toEqual(['light', 'light']);
+  expect(await win.evaluate(() => getComputedStyle(document.querySelector('header')).backgroundColor)).toBe('rgb(255, 255, 255)');
+  await choose('Automático (el del sistema)');
+  await expect.poll(state).toEqual([null, 'system']);
+  await app.close();
+});

@@ -367,10 +367,15 @@ ipcMain.on('tab:adopted', (e, ok) => {
 
 // --- IPC -----------------------------------------------------------------
 // Versión del contrato con la interfaz (= DESKTOP_API de src/desktop.js y apiVersion del preload).
-const DESKTOP_API = 12;
+const DESKTOP_API = 13;
 ipcMain.handle('app:apiVersion', () => DESKTOP_API);
 // Idioma: el del sistema al arrancar; la ventana manda el que usa de verdad (Preferencias → Idioma).
 ipcMain.on('app:setLang', (_e, lang) => i18n.setLang(String(lang)));
+// Tema (Preferencias → Tema): Electron lo aplica a todas las ventanas, a la barra de título y a los diálogos nativos.
+ipcMain.on('app:setTheme', (_e, theme) => {
+  const next = theme === 'light' || theme === 'dark' ? theme : 'system';
+  if (nativeTheme.themeSource !== next) nativeTheme.themeSource = next;
+});
 i18n.onChange(() => buildMenu());
 
 const isPdfPath = (p) => typeof p === 'string' && path.isAbsolute(p) && /\.pdf$/i.test(p);

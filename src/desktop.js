@@ -9,7 +9,7 @@
  */
 import { t } from './i18n/index.js';
 
-export const DESKTOP_API = 12;
+export const DESKTOP_API = 13;
 
 let webShare = null;
 const web = {
@@ -31,6 +31,7 @@ const web = {
   // En el navegador no hay carpetas: Preferencias desactiva «Elegir…».
   chooseFolder: undefined,
   setLang() {},
+  setTheme() {}, // en el navegador basta con data-theme (src/theme.js)
   async chooseSavePath({ defaultPath } = {}) { return (defaultPath ?? 'documento.pdf').split(/[\\/]/).pop(); },
   async savePdf({ bytes, suggestedName }) {
     const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));

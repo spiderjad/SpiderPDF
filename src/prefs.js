@@ -9,13 +9,15 @@
 //   restoreTabs: al abrir la app, volver a abrir las pestañas (y ventanas) de la última vez. Desactivado por defecto:
 //     abrir un PDF con doble clic no debe traer también los de ayer.
 //   autoUpdate: buscar actualizaciones al abrir la app (activado por defecto; se pueden buscar a mano igualmente).
+//   theme: 'auto' (el del sistema), 'light' u 'dark' (ver src/theme.js).
 import { REDUCE_LEVELS } from './reduce.js';
 
 const STORE = 'spiderpdf:prefs';
 export const NAME_MAX = 80;
-export const DEFAULT_PREFS = { ai: 'claude', userName: '', outputDir: '', quality: 'balanced', lang: 'auto', restoreTabs: false, autoUpdate: true };
+export const DEFAULT_PREFS = { ai: 'claude', userName: '', outputDir: '', quality: 'balanced', lang: 'auto', restoreTabs: false, autoUpdate: true, theme: 'auto' };
 const LANG_PREFS = new Set(['auto', 'es', 'en', 'ca']);
 const AI = new Set(['claude', 'chatgpt']);
+export const THEMES = ['auto', 'light', 'dark'];
 
 /** Solo valores conocidos: lo que haya en el almacenamiento no puede meter otra cosa. */
 export function normalizePrefs(p) {
@@ -28,6 +30,7 @@ export function normalizePrefs(p) {
     lang: LANG_PREFS.has(p?.lang) ? p.lang : DEFAULT_PREFS.lang,
     restoreTabs: p?.restoreTabs === true,
     autoUpdate: p?.autoUpdate !== false,
+    theme: THEMES.includes(p?.theme) ? p.theme : DEFAULT_PREFS.theme,
   };
 }
 
