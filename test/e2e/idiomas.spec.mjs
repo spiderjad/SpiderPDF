@@ -1,7 +1,7 @@
 // Idiomas en la app real: el del sistema (--lang de Chromium = idioma de Windows), el elegido en Preferencias
 // (cambia al momento y se recuerda) y los diálogos nativos del proceso principal en el mismo idioma.
 import { test, expect } from '@playwright/test';
-import { tempDir, copyFixture, launch } from './helpers.mjs';
+import { tempDir, copyFixture, launch, PACKAGED_EXE } from './helpers.mjs';
 
 const menubar = (win) => win.getByRole('menubar');
 const header = (win) => win.locator('header');
@@ -18,6 +18,9 @@ for (const [lang, file, open, organize, pages, saveTitle] of [
   ['fr-FR', 'File', 'Open', 'Organize', '5 pages', 'Save PDF'], // idioma que no tenemos → inglés
 ]) {
   test(`sistema en ${lang}: interfaz, menú, barra de estado y diálogos nativos`, async () => {
+    // Empaquetada solo lleva los idiomas de Chromium que usamos: con --lang=fr-FR en un Windows en español, Chromium usa
+    // el del sistema (español). En un Windows francés de verdad saldría en inglés; esa simulación solo vale sin empaquetar.
+    test.skip(!!PACKAGED_EXE && lang === 'fr-FR', 'Con la app empaquetada --lang no simula un sistema en francés.');
     const dir = await tempDir();
     const { app, win, errors } = await launch(dir, [await copyFixture(dir, 'contrato.pdf')], {}, { lang });
     await expect(menubar(win).getByRole('menuitem').first()).toHaveText(file);

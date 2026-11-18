@@ -4,7 +4,9 @@
 import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { ROOT, tempDir, copyFixture, launch, stubOpen, footer, confirmDialog, thumbs } from './helpers.mjs';
+import { ROOT, tempDir, copyFixture, launch, stubOpen, footer, confirmDialog, thumbs, PACKAGED_EXE } from './helpers.mjs';
+
+test.skip(!!PACKAGED_EXE, 'Usa ganchos de prueba que la app empaquetada no tiene (allí haría cosas de verdad).');
 
 // La versión instalada es la de package.json; la «nueva» del simulado, una que siempre es mayor.
 const CURRENT = JSON.parse(await readFile(path.join(ROOT, 'package.json'), 'utf8')).version;

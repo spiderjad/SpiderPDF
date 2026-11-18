@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { pdf } from '../engine/client.js';
 import { boxPx } from './AnnotShapes.jsx';
 import { toDisplay } from '../geometry.js';
+import { uneditableReason } from '../textGeom.js';
 import { useT } from '../i18n/index.js';
 
 /** Familia CSS parecida a la fuente del PDF (solo para la vista previa; al guardar se usa una estándar). */
@@ -35,18 +36,27 @@ function placement(run, R, W, H) {
 /**
  * Texto existente de una página: con la herramienta Texto se elige un bloque y se reescribe.
  * Los bloques cambiados se ven siempre (tapan el original hasta que se guarda).
+ * Si en la página no hay nada que editar (una imagen con el texto reconocido encima, texto agrupado o ninguno), con la
+ * herramienta activa se dice en un aviso sobre la página: antes, pulsar no hacía nada y parecía que fallaba.
  */
 export default function TextLayer({ page, W, H, R, pxPerPt, active, conflicts, dispatch }) {
   const t = useT();
   const [runs, setRuns] = useState([]);
   const [editing, setEditing] = useState(null); // objIndex
+  const [reason, setReason] = useState(null); // por qué no hay nada que editar (uneditableReason), o null
   const edits = page.textEdits ?? {};
   const hasEdits = Object.keys(edits).length > 0;
 
   useEffect(() => {
     if (!active && !hasEdits) return undefined;
     let alive = true;
-    pdf.textRuns(page.docId, page.index).then((r) => alive && setRuns(r)).catch(() => {});
+    pdf.textRuns(page.docId, page.index).then(async (r) => {
+      if (!alive) return;
+      setRuns(r);
+      if (!active || r.some((x) => !x.invisible)) { setReason(null); return; }
+      const chars = await pdf.textChars(page.docId, page.index).catch(() => ({ hasText: false }));
+      if (alive) setReason(uneditableReason(r, chars.hasText));
+    }).catch(() => {});
     return () => { alive = false; };
   }, [active, hasEdits, page.docId, page.index]);
 
@@ -57,7 +67,17 @@ export default function TextLayer({ page, W, H, R, pxPerPt, active, conflicts, d
     dispatch({ type: 'setTextEdit', key: page.key, objIndex: run.objIndex, text, from: run.text });
   };
 
-  return runs.filter((r) => !r.invisible).map((run) => {
+  const notice = active && reason ? (
+    <span
+      key="sin-texto"
+      role="note"
+      className="pointer-events-none absolute left-1/2 top-3 w-max max-w-[85%] -translate-x-1/2 rounded-lg border border-line bg-panel px-3 py-1.5 text-center text-xs text-muted shadow-card"
+    >
+      {t(`reader.text.uneditable.${reason}`)}
+    </span>
+  ) : null;
+
+  const blocks = runs.filter((r) => !r.invisible).map((run) => {
     const edit = edits[run.objIndex];
     const { x, y, w, deg } = placement(run, R, W, H);
     const fontPx = run.ptSize * pxPerPt;
@@ -102,6 +122,7 @@ export default function TextLayer({ page, W, H, R, pxPerPt, active, conflicts, d
       </div>
     );
   });
+  return notice ? [...blocks, notice] : blocks;
 }
 
 function TextEditor({ initial, style, onCommit, onCancel }) {

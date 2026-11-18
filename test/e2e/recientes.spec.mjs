@@ -2,7 +2,9 @@
 import { test, expect } from '@playwright/test';
 import { readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
-import { tempDir, copyFixture, launch, stubOpen, footer, toolbarButton } from './helpers.mjs';
+import { tempDir, copyFixture, launch, stubOpen, footer, toolbarButton, PACKAGED_EXE } from './helpers.mjs';
+
+test.skip(!!PACKAGED_EXE, 'Usa ganchos de prueba que la app empaquetada no tiene (allí haría cosas de verdad).');
 
 const recentsFile = (dir) => path.join(dir, 'datos-app', 'recientes.json');
 const readRecents = async (dir) => JSON.parse(await readFile(recentsFile(dir), 'utf8')).map((r) => r.name);

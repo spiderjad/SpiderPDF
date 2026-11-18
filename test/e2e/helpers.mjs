@@ -10,6 +10,13 @@ export const ROOT = path.resolve(fileURLToPath(new URL('../..', import.meta.url)
 const require = createRequire(import.meta.url);
 export const { verifyPdfSignatures } = require('../../electron/sigverify.cjs');
 
+/**
+ * SPIDERPDF_E2E_EXE=ruta de SpiderPDF.exe (p. ej. release/win-unpacked): las pruebas usan la app EMPAQUETADA, con
+ * --user-data-dir en la carpeta temporal (nunca el perfil real). Ahí no existen los ganchos de prueba (impresora,
+ * compartir, enlaces, actualizaciones…) ni e2e.log: las pruebas que los usan fallan por eso.
+ */
+export const PACKAGED_EXE = process.env.SPIDERPDF_E2E_EXE || null;
+
 /** Carpeta temporal para una prueba. */
 export const tempDir = () => mkdtemp(path.join(os.tmpdir(), 'spiderpdf-e2e-'));
 
@@ -31,12 +38,25 @@ export async function launch(dir, files = [], extraEnv = {}, { lang = 'es-ES', s
   const env = { ...process.env, SPIDERPDF_USER_DATA: path.join(dir, 'datos-app'), ...extraEnv };
   delete env.ELECTRON_RUN_AS_NODE; // VS Code la define y convierte Electron en Node
   delete env.VITE_DEV_SERVER_URL;
-  const app = await electron.launch({ args: [`--lang=${lang}`, ROOT, ...files], cwd: ROOT, env, timeout: 60_000 });
+  const app = await electron.launch(PACKAGED_EXE
+    ? { executablePath: PACKAGED_EXE, args: [`--user-data-dir=${env.SPIDERPDF_USER_DATA}`, `--lang=${lang}`, ...files], env, timeout: 60_000 }
+    : { args: [`--lang=${lang}`, ROOT, ...files], cwd: ROOT, env, timeout: 60_000 });
   const win = await app.firstWindow();
   const errors = [];
   win.on('pageerror', (e) => errors.push(e.message));
   // El aviso de cambios sin guardar al cerrar es nativo y bloquearía la prueba: se acepta solo.
   await app.evaluate(({ dialog }) => { dialog.showMessageBoxSync = () => 0; });
+  // App empaquetada: no hay ganchos de prueba. Red de seguridad para que nada salga del equipo ni de la ventana:
+  // ni impresora, ni navegador, ni programas, ni el Explorador (una prueba sin saltar fallaría, pero sin efectos).
+  if (PACKAGED_EXE) {
+    await app.evaluate(({ shell, webContents }) => {
+      shell.openExternal = async () => {};
+      shell.openPath = async () => '';
+      shell.showItemInFolder = () => {};
+      const proto = Object.getPrototypeOf(webContents.getAllWebContents()[0]);
+      proto.print = (_o, cb) => cb?.(false, 'bloqueado en las pruebas con la app empaquetada');
+    });
+  }
   if (!spanish) await expect(win.locator('footer')).toBeVisible({ timeout: 30_000 }); // otro idioma: sin buscar textos
   else if (files.length) await expect(win.locator('footer')).toContainText(/\d+ páginas?/, { timeout: 30_000 });
   else await expect(win.getByText('Abre un PDF para empezar')).toBeVisible({ timeout: 30_000 });

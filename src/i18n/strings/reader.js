@@ -69,6 +69,9 @@ export default {
     'reader.text.editAria': 'Editar el texto «{text}»',
     'reader.text.editTitle': 'Editar este texto',
     'reader.text.input': 'Texto',
+    'reader.text.uneditable.image': 'Esta página es una imagen con el texto reconocido encima: lo que ves no se puede editar. Con «Texto nuevo» puedes escribir encima.',
+    'reader.text.uneditable.grouped': 'El texto de esta página está agrupado de una forma que no se puede editar. Con «Texto nuevo» puedes escribir encima.',
+    'reader.text.uneditable.none': 'Esta página no tiene texto que se pueda editar. Con «Texto nuevo» puedes escribir encima.',
 
     'reader.textbox.editing': 'Texto del cuadro',
     'reader.textbox.aria': 'Cuadro de texto: {text}',
@@ -219,6 +222,9 @@ export default {
     'reader.text.editAria': 'Edit the text “{text}”',
     'reader.text.editTitle': 'Edit this text',
     'reader.text.input': 'Text',
+    'reader.text.uneditable.image': 'This page is an image with the recognized text on top: what you see can’t be edited. Use “New text” to write over it.',
+    'reader.text.uneditable.grouped': 'The text on this page is grouped in a way that can’t be edited. Use “New text” to write over it.',
+    'reader.text.uneditable.none': 'This page has no text that can be edited. Use “New text” to write over it.',
 
     'reader.textbox.editing': 'Text box content',
     'reader.textbox.aria': 'Text box: {text}',
@@ -369,6 +375,9 @@ export default {
     'reader.text.editAria': 'Edita el text «{text}»',
     'reader.text.editTitle': 'Edita aquest text',
     'reader.text.input': 'Text',
+    'reader.text.uneditable.image': 'Aquesta pàgina és una imatge amb el text reconegut a sobre: el que veus no es pot editar. Amb «Text nou» hi pots escriure a sobre.',
+    'reader.text.uneditable.grouped': 'El text d’aquesta pàgina està agrupat d’una manera que no es pot editar. Amb «Text nou» hi pots escriure a sobre.',
+    'reader.text.uneditable.none': 'Aquesta pàgina no té text que es pugui editar. Amb «Text nou» hi pots escriure a sobre.',
 
     'reader.textbox.editing': 'Text del quadre',
     'reader.textbox.aria': 'Quadre de text: {text}',

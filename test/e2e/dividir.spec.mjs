@@ -5,7 +5,7 @@ import { readFile, writeFile, stat } from 'node:fs/promises';
 import { deflateSync } from 'node:zlib';
 import path from 'node:path';
 import { PDFDocument } from 'pdf-lib';
-import { tempDir, copyFixture, launch, stubOpen, footer, engine } from './helpers.mjs';
+import { tempDir, copyFixture, launch, stubOpen, footer, engine, PACKAGED_EXE } from './helpers.mjs';
 
 const dialog = (win) => win.getByRole('dialog', { name: 'Dividir PDF' });
 
@@ -28,6 +28,7 @@ async function pagesOf(file) {
 test('cada N páginas (por defecto 2): vista previa, archivos con el patrón en la carpeta del original y «Mostrar en la carpeta»', async () => {
   const dir = await tempDir();
   const contrato = await copyFixture(dir, 'contrato.pdf'); // 5 páginas
+  test.skip(!!PACKAGED_EXE, 'Usa el gancho de «Mostrar en la carpeta», que la app empaquetada no tiene.');
   const { app, win, errors } = await launch(dir, [contrato]);
   await app.evaluate(() => {
     globalThis.__revealed = [];

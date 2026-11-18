@@ -3,7 +3,9 @@ import { test, expect } from '@playwright/test';
 import { readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
-import { tempDir, copyFixture, launch } from './helpers.mjs';
+import { tempDir, copyFixture, launch, PACKAGED_EXE } from './helpers.mjs';
+
+test.skip(!!PACKAGED_EXE, 'Usa ganchos de prueba que la app empaquetada no tiene (allí haría cosas de verdad).');
 
 // Una firma mínima válida (PNG de 1×1) como las que guarda el diálogo de firma.
 const SIG = { src: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==' };

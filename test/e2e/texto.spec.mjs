@@ -1,8 +1,11 @@
-// Herramienta «Texto nuevo» en la app real: fuente del texto cercano, letras que faltan, formato y guardado.
+// Herramientas «Texto nuevo» y «Editar texto» en la app real: fuente del texto cercano, letras que faltan, formato,
+// cambiar un texto del PDF y guardado; aviso en las páginas sin nada que editar.
 import { test, expect } from '@playwright/test';
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { PDFDocument } from 'pdf-lib';
+import {
+  PDFDocument, StandardFonts, beginText, endText, setFontAndSize, setTextRenderingMode, TextRenderingMode, moveText, showText,
+} from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 import { tempDir, copyFixture, launch, footer, toolbarButton, readWhenChanged, engine, ROOT } from './helpers.mjs';
 
@@ -180,5 +183,67 @@ test('formato, arrastrar para hacer el cuadro, mover, duplicar (Ctrl+D), borrar 
   const text = core.pageText(d.docId, 0).replace(/\s+/g, ' ');
   expect(text).toContain('Texto en varias líneas dentro de un cuadro estrecho');
   core.close(d.docId);
+  await app.close();
+});
+
+test('Editar texto: pulsar un texto del PDF, cambiarlo y guardarlo', async () => {
+  const dir = await tempDir();
+  const file = await copyFixture(dir, 'contrato.pdf');
+  const original = await readFile(file);
+  const { app, win, errors } = await launch(dir, [file]);
+  await win.getByRole('tab', { name: 'Leer' }).click();
+  await tool(win, 'Editar texto').click();
+  const title = win.getByRole('button', { name: 'Editar el texto «Contrato de suministro»' });
+  const b = await title.boundingBox();
+  await win.mouse.click(b.x + b.width / 3, b.y + b.height / 2);
+  const input = win.getByRole('textbox', { name: 'Texto', exact: true });
+  await expect(input).toBeFocused();
+  await expect(input).toHaveValue('Contrato de suministro');
+  await input.fill('Contrato de servicios');
+  await input.press('Enter');
+  await expect(footer(win)).toContainText('Cambios sin guardar');
+  await expect(win.getByRole('note')).toHaveCount(0); // con texto editable no hay aviso
+
+  await save(win);
+  const saved = await readWhenChanged(file, original);
+  const core = await engine();
+  const d = core.open(saved);
+  const text = core.pageText(d.docId, 0);
+  expect(text).toContain('Contrato de servicios');
+  expect(text).not.toContain('Contrato de suministro');
+  core.close(d.docId);
+  expect(errors).toEqual([]);
+  await app.close();
+});
+
+test('Editar texto en páginas sin nada que editar (imagen con el texto reconocido encima, sin texto): lo dice', async () => {
+  const dir = await tempDir();
+  // Como los PDF exportados como imagen con OCR: la página es una foto y el texto va invisible encima.
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const png = await doc.embedPng(await readFile(path.join(ROOT, 'build', 'icon.png')));
+  const scan = doc.addPage([595, 842]);
+  scan.drawImage(png, { x: 0, y: 0, width: 595, height: 842 });
+  scan.setFont(font);
+  scan.pushOperators(beginText(), setFontAndSize(scan.fontKey, 18), setTextRenderingMode(TextRenderingMode.Invisible),
+    moveText(60, 760), showText(font.encodeText('Texto reconocido invisible')), endText());
+  doc.addPage([595, 842]).drawText('Texto normal que se edita', { x: 60, y: 760, size: 18, font });
+  doc.addPage([595, 842]).drawRectangle({ x: 60, y: 600, width: 200, height: 100 }); // solo un dibujo
+  const file = path.join(dir, 'imagen-con-ocr.pdf');
+  await writeFile(file, await doc.save());
+
+  const { app, win, errors } = await launch(dir, [file]);
+  await win.getByRole('tab', { name: 'Leer' }).click();
+  await tool(win, 'Editar texto').click();
+  const notes = win.getByRole('note');
+  await expect(win.locator('[data-i="0"]').getByRole('note')).toHaveText('Esta página es una imagen con el texto reconocido encima: lo que ves no se puede editar. Con «Texto nuevo» puedes escribir encima.');
+  await win.locator('[data-i="2"]').scrollIntoViewIfNeeded();
+  await expect(win.locator('[data-i="2"]').getByRole('note')).toHaveText('Esta página no tiene texto que se pueda editar. Con «Texto nuevo» puedes escribir encima.');
+  await expect(win.locator('[data-i="1"]').getByRole('note')).toHaveCount(0);
+  await expect(win.getByRole('button', { name: 'Editar el texto «Texto normal que se edita»' })).toHaveCount(1);
+  // Con otra herramienta, sin avisos.
+  await tool(win, 'Seleccionar').click();
+  await expect(notes).toHaveCount(0);
+  expect(errors).toEqual([]);
   await app.close();
 });

@@ -7,7 +7,7 @@ import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import {
-  ROOT, tempDir, copyFixture, launch, stubOpen, footer, confirmDialog, docTabs, thumbs, readWhenChanged, engine,
+  ROOT, PACKAGED_EXE, tempDir, copyFixture, launch, stubOpen, footer, confirmDialog, docTabs, thumbs, readWhenChanged, engine,
 } from './helpers.mjs';
 
 const require = createRequire(import.meta.url);
@@ -19,7 +19,9 @@ function openFromExplorer(dir, files) {
   delete env.ELECTRON_RUN_AS_NODE;
   delete env.VITE_DEV_SERVER_URL;
   return new Promise((resolve, reject) => {
-    const p = spawn(ELECTRON, ['--lang=es-ES', ROOT, ...files], { cwd: ROOT, env, stdio: 'ignore' });
+    const p = PACKAGED_EXE
+      ? spawn(PACKAGED_EXE, [`--user-data-dir=${env.SPIDERPDF_USER_DATA}`, '--lang=es-ES', ...files], { cwd: ROOT, env, stdio: 'ignore' })
+      : spawn(ELECTRON, ['--lang=es-ES', ROOT, ...files], { cwd: ROOT, env, stdio: 'ignore' });
     p.on('error', reject);
     p.on('exit', resolve); // sin el candado de instancia única, sale en el acto
   });
@@ -165,6 +167,7 @@ test('abrir desde el Explorador con la app abierta: pestaña nueva; si ya estaba
 });
 
 test('arrastrar una pestaña fuera la abre en otra ventana con sus cambios; también desde Ver con el teclado', async () => {
+  test.skip(!!PACKAGED_EXE, 'Lee e2e.log, que la app empaquetada no escribe.');
   const dir = await tempDir();
   const contrato = await copyFixture(dir, 'contrato.pdf');
   const anexo = await copyFixture(dir, 'anexo.pdf');

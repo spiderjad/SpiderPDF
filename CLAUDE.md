@@ -15,6 +15,12 @@ Argentina, trabaja en España).
   `npm run test:e2e` en verde.** Las pruebas trabajan con copias en una carpeta temporal (nunca abren `test/fixtures`),
   arrancan con su propia carpeta de datos (`SPIDERPDF_USER_DATA`, así no chocan con una ventana abierta) y sustituyen los
   diálogos nativos desde el proceso principal (`stubOpen`, `stubSaveAs` en `test/e2e/helpers.mjs`).
+- Probar la **app empaquetada** (lo que instala el usuario): `npm run dist:win` y luego
+  `SPIDERPDF_E2E_EXE=release/win-unpacked/SpiderPDF.exe npx playwright test -c test/e2e/playwright.config.mjs`. Usa
+  `--user-data-dir` en la carpeta temporal (nunca `%APPDATA%\SpiderPDF`). Ahí no existen los ganchos de prueba: las
+  que los usan se saltan (`test.skip(!!PACKAGED_EXE)`) y `launch` además anula imprimir, `shell.openExternal`,
+  `openPath` y `showItemInFolder`. **Nunca lanzar pruebas contra la app empaquetada sin esto**: el 18/11 imprimió de
+  verdad unas 300 páginas en la impresora «Oficina» de Diego y abrió Excel, el navegador y Outlook.
 - `npm run dev`: app Electron con recarga en caliente.
 - `npm run web`: la misma interfaz en el navegador (http://localhost:5173), útil para depurar UI.
 - `node test/make-fixtures.js`: regenera los PDFs de ejemplo de `test/fixtures`.
@@ -214,6 +220,9 @@ Español (original), inglés y catalán. **Todo texto visible pasa por `t()`** (
   se borrara, PDFium guardaría el objeto suelto con su contenido) y las firmas que la tocan en parte quedan con esos píxeles en negro.
   `src/conflicts.js` (probado) detecta firmas, notas y textos editados encima de una zona: toast al aparecer, borde `--danger`
   y confirmación extra al guardar.
+- «Editar texto» en una página sin bloques editables lo dice en un aviso sobre la página (`uneditableReason` en
+  `textGeom.js`): imagen con el texto reconocido encima (solo texto invisible: PDF exportados como imagen + OCR, p. ej.
+  presentaciones), texto agrupado (Form XObjects) o sin texto. Antes, pulsar no hacía nada y Diego lo vio como un fallo.
 - Límites conocidos: el texto editado o el que queda junto a una redacción usa fuente estándar (puede verse distinto si el original
   era otra fuente); tras redactar, ese resto queda en objetos de una letra (editar después con Texto va letra a letra);
   no se edita texto dentro de Form XObjects.

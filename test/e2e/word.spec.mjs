@@ -4,7 +4,9 @@ import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import JSZip from 'jszip';
-import { tempDir, copyFixture, launch, stubSaveAs } from './helpers.mjs';
+import { tempDir, copyFixture, launch, stubSaveAs, PACKAGED_EXE } from './helpers.mjs';
+
+test.skip(!!PACKAGED_EXE, 'Usa ganchos de prueba que la app empaquetada no tiene (allí haría cosas de verdad).');
 
 const exportMenu = async (win) => {
   await win.locator('header').getByRole('button', { name: 'Exportar' }).click();

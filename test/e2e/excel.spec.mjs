@@ -3,7 +3,9 @@ import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import ExcelJS from 'exceljs';
-import { tempDir, copyFixture, launch, launchMerged, stubSaveAs } from './helpers.mjs';
+import { tempDir, copyFixture, launch, launchMerged, stubSaveAs, PACKAGED_EXE } from './helpers.mjs';
+
+test.skip(!!PACKAGED_EXE, 'Usa ganchos de prueba que la app empaquetada no tiene (allí haría cosas de verdad).');
 
 test('factura y albarán: vista previa, opciones, libro con números y fechas reales, abrir en Excel', async () => {
   const dir = await tempDir();

@@ -7,7 +7,9 @@ import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
-import { tempDir, copyFixture, launch, launchMerged, toolbarButton, engine } from './helpers.mjs';
+import { tempDir, copyFixture, launch, launchMerged, toolbarButton, engine, PACKAGED_EXE } from './helpers.mjs';
+
+test.skip(!!PACKAGED_EXE, 'Usa ganchos de prueba que la app empaquetada no tiene (allí haría cosas de verdad).');
 
 const dialog = (win) => win.getByRole('dialog', { name: 'Compartir' });
 const target = (win, name) => dialog(win).getByRole('group', { name: 'Destino' }).getByRole('button', { name: new RegExp(`^${name}`) });

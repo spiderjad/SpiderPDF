@@ -1,7 +1,9 @@
 // Marcadores desde un índice impreso y enlaces del PDF, en la app real.
 import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
-import { tempDir, copyFixture, launch, footer, toolbarButton, readWhenChanged, engine, confirmDialog } from './helpers.mjs';
+import { tempDir, copyFixture, launch, footer, toolbarButton, readWhenChanged, engine, confirmDialog, PACKAGED_EXE } from './helpers.mjs';
+
+test.skip(!!PACKAGED_EXE, 'Usa ganchos de prueba que la app empaquetada no tiene (allí haría cosas de verdad).');
 
 const titles = (nodes) => nodes.map((n) => [n.title, n.pageIndex, titles(n.children)]);
 

@@ -5,8 +5,10 @@ import { test, expect } from '@playwright/test';
 import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
-import { tempDir, copyFixture, launch, launchMerged, footer, engine } from './helpers.mjs';
+import { tempDir, copyFixture, launch, launchMerged, footer, engine, PACKAGED_EXE } from './helpers.mjs';
 import { PAPERS, sheetLayout } from '../../src/printLayout.js';
+
+test.skip(!!PACKAGED_EXE, 'Usa ganchos de prueba que la app empaquetada no tiene (allí haría cosas de verdad).');
 
 const PRINTERS = [
   { name: 'Microsoft Print to PDF', displayName: 'Microsoft Print to PDF', isDefault: true },

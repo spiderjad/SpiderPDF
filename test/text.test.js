@@ -1,7 +1,7 @@
 // Pruebas de src/textGeom.js (buscar y seleccionar texto).  Ejecutar: npm test
 import assert from 'node:assert/strict';
 import {
-  normalizeForSearch, findMatches, lineRects, caretAt, charIndexAt, wordAt, selectedText, hasRealText,
+  normalizeForSearch, findMatches, lineRects, caretAt, charIndexAt, wordAt, selectedText, hasRealText, uneditableReason,
 } from '../src/textGeom.js';
 
 let passed = 0;
@@ -84,6 +84,13 @@ t('letra bajo el puntero (para el cursor de texto)', () => {
   const s = sample();
   assert.equal(charIndexAt(s.boxes, s.generated, 0.105, 0.11), 0);
   assert.equal(charIndexAt(s.boxes, s.generated, 0.5, 0.5), -1);
+});
+
+t('«Editar texto» sin nada que editar: imagen con OCR encima, texto agrupado o sin texto', () => {
+  assert.equal(uneditableReason([{ invisible: false }, { invisible: true }], true), null);
+  assert.equal(uneditableReason([{ invisible: true }, { invisible: true }], true), 'image'); // PDF exportado como imagen + OCR
+  assert.equal(uneditableReason([], true), 'grouped'); // texto dentro de Form XObjects
+  assert.equal(uneditableReason([], false), 'none'); // escaneo sin OCR, página en blanco o solo dibujos
 });
 
 console.log(`\n${passed} pruebas de texto superadas.`);

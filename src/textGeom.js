@@ -135,3 +135,15 @@ export function selectedText(text, from, to) {
 export function hasRealText(text) {
   return /[\p{L}\p{N}]/u.test(text);
 }
+
+/**
+ * «Editar texto» en una página sin nada que se pueda editar: ¿por qué? (para decirlo en vez de no hacer nada)
+ *   runs: bloques de texto de primer nivel (textRuns); hasText: la página tiene texto seleccionable.
+ *   → null (hay bloques que editar) | 'image' (solo texto invisible: una imagen con la capa de OCR encima; lo que se
+ *     ve son píxeles) | 'grouped' (el texto está dentro de grupos —Form XObjects— que no se editan) | 'none'
+ */
+export function uneditableReason(runs, hasText) {
+  if (runs.some((r) => !r.invisible)) return null;
+  if (runs.length) return 'image';
+  return hasText ? 'grouped' : 'none';
+}
