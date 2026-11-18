@@ -121,6 +121,7 @@ export function allows(policy, a, state) {
   if (a.type === 'setOutline') return policy.pages; // el índice es del documento, como el orden de las páginas
   if (a.type === 'setField') return policy.forms;
   if (a.type === 'setTextEdit' || a.type === 'setOcr') return policy.content; // la capa del OCR es texto de la página
+  if (a.type === 'setWatermark' || a.type === 'removeWatermarks') return policy.content; // la marca de agua va en el contenido
   if (a.type === 'addAnnot') return policy[annotKind(a.annot)];
   if (a.type === 'updateAnnot' || a.type === 'removeAnnot' || a.type === 'copyAnnotTo') {
     const annot = state?.pages.find((p) => p.key === a.key)?.annots.find((x) => x.id === a.id);

@@ -1726,4 +1726,159 @@ console.log('  sellos (anotación /Stamp con apariencia, girados, fijados):');
 
 await mkdir('test/out', { recursive: true });
 await writeFile('test/out/resultado.pdf', out);
+console.log('  marcas de agua (trazos o imagen, delante o detrás, reconocibles para quitarlas):');
+{
+  // Página 1 en blanco; página 2 cubierta por un rectángulo negro (para ver «detrás»); página 3 girada 90°.
+  const doc = await PDFDocument.create();
+  doc.addPage([595, 842]);
+  const black = doc.addPage([595, 842]);
+  black.drawRectangle({ x: 0, y: 0, width: 595, height: 842, color: rgb(0, 0, 0) });
+  const turned = doc.addPage([595, 842]);
+  turned.setRotation(degrees(90));
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  doc.getPage(0).drawText('Texto del documento', { x: 60, y: 780, size: 14, font });
+  const W = core.open(await doc.save());
+  const WM = { kind: 'text', text: 'BORRADOR', family: 'sans', bold: true, size: 72, color: '#B91C1C', opacity: 1, rotation: 'diagonal', angle: 45, position: 'center', layer: 'front', scale: 0.5 };
+  const render = (docId, index, opts) => core.render(docId, index, 0.5, 0, opts);
+  const differs = (a, b) => { let n = 0; for (let i = 0; i < a.pixels.length; i += 4) if (Math.abs(a.pixels[i] - b.pixels[i]) > 8 || Math.abs(a.pixels[i + 1] - b.pixels[i + 1]) > 8) n++; return n; };
+  const inkBox = (r) => { // caja de lo que no es blanco
+    let x0 = Infinity; let y0 = Infinity; let x1 = -1; let y1 = -1;
+    for (let y = 0; y < r.height; y++) for (let x = 0; x < r.width; x++) {
+      const o = (y * r.width + x) * 4;
+      if (r.pixels[o] < 240 || r.pixels[o + 1] < 240) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+    }
+    return { x0, y0, x1, y1, w: x1 - x0, h: y1 - y0 };
+  };
+  const darkest = (r) => { let m = 255; for (let i = 0; i < r.pixels.length; i += 4) m = Math.min(m, r.pixels[i + 1]); return m; };
+  const before = [0, 1, 2].map((i) => render(W.docId, i));
+  const reopen = (bytes) => core.open(bytes);
+
+  t('  · texto: trazos marcados como marca de agua de SpiderPDF; se ve, pero no es texto (no se busca ni se copia)', () => {
+    const d = reopen(core.compose([{ docId: W.docId, index: 0, rot: 0, watermark: WM }]));
+    assert.deepEqual(core.watermarkPages(d.docId), [0]);
+    const r = render(d.docId, 0);
+    assert.ok(differs(r, before[0]) > 1000, 'la marca se ve');
+    assert.ok(Math.abs(inkBox(r).x0 - inkBox(before[0]).x0) > 5 || differs(r, before[0]) > 1000);
+    const text = core.textChars(d.docId, 0).text;
+    assert.ok(text.includes('Texto del documento') && !/BORRADOR/i.test(text), `sin la marca en el texto: ${text}`);
+    assert.equal(core.searchPage(d.docId, 0, 'borrador').matches.length, 0);
+    // Diagonal (de abajo a la izquierda a arriba a la derecha): la tinta nueva ocupa casi todo el ancho y alto.
+    const pg = core.m.FPDF_LoadPage(core.doc(d.docId), 0);
+    const objs = core.watermarkObjects(pg);
+    assert.equal(objs.length, 1);
+    assert.equal(core.m.FPDFPageObj_GetType(objs[0]), 2, 'un trazado');
+    const names = []; for (let i = 0; i < core.m.FPDFPageObj_CountMarks(objs[0]); i++) names.push(core.markName(core.m.FPDFPageObj_GetMark(objs[0], i)));
+    assert.deepEqual(names, ['Artifact', 'SpiderPDFWatermark']);
+    const [x0, y0, x1, y1] = core.objBounds(objs[0]);
+    core.m.FPDF_ClosePage(pg);
+    assert.ok(Math.abs((x0 + x1) / 2 - 297.5) < 3 && Math.abs((y0 + y1) / 2 - 421) < 3, 'centrada');
+    const slope = (y1 - y0) / (x1 - x0);
+    assert.ok(slope > 0.9 && slope < 2, `en diagonal: ${slope}`);
+    core.close(d.docId);
+  });
+
+  t('  · opacidad: al 30 % el color queda claro; al 100 %, el color tal cual', () => {
+    const full = reopen(core.compose([{ docId: W.docId, index: 0, rot: 0, watermark: { ...WM, color: '#000000', text: 'XXXX' } }]));
+    const light = reopen(core.compose([{ docId: W.docId, index: 0, rot: 0, watermark: { ...WM, color: '#000000', text: 'XXXX', opacity: 0.3 } }]));
+    // Sin el texto del documento (arriba): solo la zona central.
+    const mid = (r) => ({ ...r, pixels: r.pixels.slice(r.width * 4 * Math.floor(r.height * 0.3), r.width * 4 * Math.floor(r.height * 0.7)) });
+    const a = darkest(mid(render(full.docId, 0)));
+    const b = darkest(mid(render(light.docId, 0)));
+    assert.ok(a < 30, `al 100 %: ${a}`);
+    assert.ok(b > 160 && b < 200, `al 30 %: ${b}`);
+    core.close(full.docId); core.close(light.docId);
+  });
+
+  t('  · delante o detrás: sobre un fondo negro, detrás no se ve y delante sí', () => {
+    const front = reopen(core.compose([{ docId: W.docId, index: 1, rot: 0, watermark: { ...WM, color: '#FFFFFF' } }]));
+    const back = reopen(core.compose([{ docId: W.docId, index: 1, rot: 0, watermark: { ...WM, color: '#FFFFFF', layer: 'back' } }]));
+    assert.ok(differs(render(front.docId, 0), before[1]) > 1000, 'delante se ve');
+    assert.equal(differs(render(back.docId, 0), before[1]), 0, 'detrás queda tapada');
+    const pg = core.m.FPDF_LoadPage(core.doc(back.docId), 0);
+    assert.ok(core.isWatermark(core.m.FPDFPage_GetObject(pg, 0)), 'detrás = el primer objeto');
+    core.m.FPDF_ClosePage(pg);
+    core.close(front.docId); core.close(back.docId);
+  });
+
+  t('  · en mosaico: muchas copias por toda la página; en una página girada, derecha tal como se ve', () => {
+    const d = reopen(core.compose([{ docId: W.docId, index: 0, rot: 0, watermark: { ...WM, size: 24, position: 'tile' } }]));
+    const pg = core.m.FPDF_LoadPage(core.doc(d.docId), 0);
+    const n = core.watermarkObjects(pg).length;
+    core.m.FPDF_ClosePage(pg);
+    assert.ok(n >= 12, `copias: ${n}`);
+    const ink = inkBox(render(d.docId, 0));
+    assert.ok(ink.x0 < 10 && ink.y0 < 10 && ink.x1 > 287 && ink.y1 > 410, `cubre la página: ${JSON.stringify(ink)}`);
+    core.close(d.docId);
+    // Página con /Rotate 90 (se ve apaisada) y la marca horizontal: en pantalla, más ancha que alta.
+    const g = reopen(core.compose([{ docId: W.docId, index: 2, rot: 0, watermark: { ...WM, rotation: 'horizontal' } }]));
+    const box = inkBox(core.render(g.docId, 0, 0.5, 0));
+    assert.ok(box.w > box.h * 3, `horizontal en pantalla: ${JSON.stringify(box)}`);
+    core.close(g.docId);
+    // Y girada además por el usuario (rot 1): igual, derecha tal como se ve.
+    const g2 = reopen(core.compose([{ docId: W.docId, index: 2, rot: 1, watermark: { ...WM, rotation: 'horizontal' } }]));
+    const box2 = inkBox(core.render(g2.docId, 0, 0.5, 0));
+    assert.ok(box2.w > box2.h * 3, `horizontal con el giro del usuario: ${JSON.stringify(box2)}`);
+    core.close(g2.docId);
+  });
+
+  t('  · derecha tal como se ve con cualquier giro (una «L»: palo a la izquierda y pie abajo)', () => {
+    for (const [index, rot] of [[0, 0], [2, 0], [2, 1], [2, 2]]) {
+      const d = reopen(core.compose([{ docId: W.docId, index, rot, watermark: { ...WM, text: 'L', size: 300, rotation: 'horizontal', color: '#000000' } }]));
+      const r = core.render(d.docId, 0, 0.5, 0);
+      core.close(d.docId);
+      // Sin el texto del documento: solo la zona de en medio.
+      const b = inkBox({ ...r, pixels: r.pixels.map((v, i) => { const y = Math.floor(i / 4 / r.width); return y < r.height * 0.25 || y > r.height * 0.75 ? 255 : v; }) });
+      const dark = (x, y) => r.pixels[(y * r.width + x) * 4] < 128;
+      let left = 0; let right = 0; let top = 0; let bottom = 0;
+      for (let y = b.y0; y <= b.y1; y++) { left += dark(b.x0 + 2, y); right += dark(b.x1 - 2, y); }
+      for (let x = b.x0; x <= b.x1; x++) { top += dark(x, b.y0 + 2); bottom += dark(x, b.y1 - 2); }
+      assert.ok(left > right && bottom > top, `página ${index}, giro ${rot}: ${JSON.stringify({ left, right, top, bottom })}`);
+    }
+  });
+
+  t('  · imagen: con su transparencia y la opacidad; no cuenta para Borrar ni para Exportar a Word', () => {
+    const w = 40; const h = 20;
+    const pixels = new Uint8ClampedArray(w * h * 4);
+    for (let i = 0; i < w * h; i++) pixels.set(i % w < 20 ? [0, 0, 200, 255] : [0, 0, 0, 0], i * 4);
+    const d = reopen(core.compose([{ docId: W.docId, index: 0, rot: 0, watermark: { ...WM, kind: 'image', rotation: 'horizontal', opacity: 0.5, scale: 0.5, image: { width: w, height: h, pixels } } }]));
+    assert.deepEqual(core.watermarkPages(d.docId), [0]);
+    const r = render(d.docId, 0);
+    const px = (u, v) => { const o = (Math.floor(v * r.height) * r.width + Math.floor(u * r.width)) * 4; return [r.pixels[o], r.pixels[o + 1], r.pixels[o + 2]]; };
+    const [pr, pgr, pb] = px(0.375, 0.5); // mitad izquierda de la imagen: azul al 50 %
+    assert.ok(pr > 110 && pr < 145 && pb > 210, `azul al 50 %: ${[pr, pgr, pb]}`);
+    assert.deepEqual(px(0.625, 0.5), [255, 255, 255], 'la parte transparente no tapa');
+    assert.deepEqual(core.imageObjects(d.docId, 0), [], 'Borrar no la ofrece');
+    assert.equal(core.pageImages(d.docId, 0).length, 0, 'Exportar a Word no la lleva');
+    core.close(d.docId);
+  });
+
+  t('  · quitar las de SpiderPDF (stripWm) y verlas ocultas antes de guardar (render con hideWm)', () => {
+    const d = reopen(core.compose([{ docId: W.docId, index: 0, rot: 0, watermark: { ...WM, position: 'tile', size: 30 } }, { docId: W.docId, index: 1, rot: 0 }]));
+    assert.deepEqual(core.watermarkPages(d.docId), [0]);
+    assert.ok(differs(render(d.docId, 0), before[0]) > 1000);
+    assert.equal(differs(render(d.docId, 0, { hideWm: true }), before[0]), 0, 'oculta: como el original');
+    assert.ok(differs(render(d.docId, 0), before[0]) > 1000, 'el PDF abierto no cambia');
+    const clean = reopen(core.compose([{ docId: d.docId, index: 0, rot: 0, stripWm: true }, { docId: d.docId, index: 1, rot: 0 }]));
+    assert.deepEqual(core.watermarkPages(clean.docId), []);
+    assert.equal(differs(render(clean.docId, 0), before[0]), 0, 'sin la marca, la página como antes');
+    assert.equal(differs(render(clean.docId, 1), before[1]), 0);
+    // Sustituir: quitar la anterior y poner otra en el mismo guardado.
+    const other = reopen(core.compose([{ docId: d.docId, index: 0, rot: 0, stripWm: true, watermark: { ...WM, text: 'COPIA' } }]));
+    const pg = core.m.FPDF_LoadPage(core.doc(other.docId), 0);
+    assert.equal(core.watermarkObjects(pg).length, 1);
+    core.m.FPDF_ClosePage(pg);
+    [d, clean, other].forEach((x) => core.close(x.docId));
+  });
+
+  t('  · con una zona redactada en la misma página, la marca de agua sigue entera', () => {
+    const d = reopen(core.compose([{ docId: W.docId, index: 0, rot: 0, annots: [{ id: 'z', type: 'redact', rect: [0.05, 0.03, 0.5, 0.1] }], watermark: WM }]));
+    const pg = core.m.FPDF_LoadPage(core.doc(d.docId), 0);
+    assert.equal(core.watermarkObjects(pg).length, 1);
+    core.m.FPDF_ClosePage(pg);
+    assert.ok(!core.textChars(d.docId, 0).text.includes('Texto del'), 'lo redactado no está');
+    core.close(d.docId);
+  });
+  core.close(W.docId);
+}
+
 console.log(`\n${passed} pruebas superadas. Salida en test/out/resultado.pdf`);

@@ -38,7 +38,7 @@ export default function PageImage({ page, cssWidth, rootRef }) {
   }, [rootRef]);
 
   // Otra página u otro giro: la imagen anterior ya no vale.
-  useEffect(() => { setDrawn(false); }, [page.docId, page.index, page.rot, page.created]);
+  useEffect(() => { setDrawn(false); }, [page.docId, page.index, page.rot, page.created, page.stripWm]);
 
   useEffect(() => {
     if (!visible) return;
@@ -65,7 +65,7 @@ export default function PageImage({ page, cssWidth, rootRef }) {
       console.warn('[SpiderPDF] No se pudo mostrar la página', page.index + 1, e);
       setFailed(true);
     });
-  }, [visible, page.docId, page.index, page.rot, page.created, w, cssWidth]);
+  }, [visible, page.docId, page.index, page.rot, page.created, page.stripWm, w, cssWidth]);
 
   return (
     <div className="relative" style={{ width: cssWidth, height: cssHeight }} aria-busy={!drawn && !failed}>

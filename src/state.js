@@ -5,6 +5,7 @@
 //   fields { annotIndex: valor } solo con los campos de formulario que el usuario cambió.
 //   textEdits { objIndex: { text, from } } textos del PDF cambiados ('' = borrado); from = texto original.
 //   Las anotaciones { type: 'redact', rect } son zonas que se redactan al guardar.
+//   watermark: marca de agua pendiente (src/watermark.js) o nada; stripWm: quitar al guardar las de SpiderPDF que ya trae.
 // Las anotaciones y los campos viven dentro de las páginas, así que deshacer y rehacer los cubren.
 // outline: índice creado en la app ([{ title, key, children }], ver outline.js) o null = el de los PDF.
 // El historial guarda { pages, outline } en cada paso.
@@ -176,6 +177,30 @@ export function reducer(s, a) {
       return commit(s, s.pages.map((p) => (targets.has(p.key)
         ? { ...p, annots: [...p.annots, { ...rest, id: newAnnotId(), rect: transferRect(src.rect, from, p) }] }
         : p)));
+    }
+
+    case 'setWatermark': {
+      // a: { keys, watermark, strip }: la marca de agua (src/watermark.js) en esas páginas, en un solo paso de
+      // deshacer. Sustituye a la que tuvieran: la pendiente y las de SpiderPDF que ya trae el PDF (strip: claves de
+      // las páginas que las tienen; se quitan al guardar).
+      const keys = new Set(a.keys);
+      if (!a.watermark || !s.pages.some((p) => keys.has(p.key))) return s;
+      return commit(s, s.pages.map((p) => (keys.has(p.key)
+        ? { ...p, watermark: a.watermark, stripWm: p.stripWm || !!a.strip?.has(p.key) }
+        : p)));
+    }
+
+    case 'removeWatermarks': {
+      // a: { strip }: quita las marcas de agua pendientes de todas las páginas y, al guardar, las de SpiderPDF que
+      // ya trae el PDF (strip: claves de las páginas que las tienen). Un solo paso de deshacer.
+      let changed = false;
+      const pages = s.pages.map((p) => {
+        const strip = !p.stripWm && !!a.strip?.has(p.key);
+        if (!p.watermark && !strip) return p;
+        changed = true;
+        return { ...p, watermark: null, stripWm: p.stripWm || strip };
+      });
+      return changed ? commit(s, pages) : s;
     }
 
     case 'reorderAnnot':

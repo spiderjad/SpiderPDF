@@ -48,6 +48,7 @@ import AppIcon from './components/AppIcon.jsx';
 import AnnotToolbar, { TOOLS } from './components/AnnotToolbar.jsx';
 import SignatureDialog from './components/SignatureDialog.jsx';
 import StampDialog from './components/StampDialog.jsx';
+import WatermarkDialog from './components/WatermarkDialog.jsx';
 import StampBar from './components/StampBar.jsx';
 import { stampName, placeRect, snapAngle, rememberStamp } from './stamps.js';
 import { displaySize } from './components/PageImage.jsx';
@@ -928,7 +929,7 @@ export default function App() {
     let job = null;
     const off = desktop.onPrintProgress?.((p) => setTask((t) => (t ? { ...t, phase: 'send', done: p.done, total: p.total } : t)));
     try {
-      const edited = list.some((p) => p.docId == null || p.annots.length || Object.keys(p.fields ?? {}).length || Object.keys(p.textEdits ?? {}).length);
+      const edited = list.some((p) => p.docId == null || p.annots.length || Object.keys(p.fields ?? {}).length || Object.keys(p.textEdits ?? {}).length || p.watermark || p.stripWm);
       let sources; // [{ docId, index, rot, w, h }] página a renderizar y su tamaño en pantalla
       if (edited) {
         const { bytes } = await pdf.compose(list);
@@ -1050,6 +1051,7 @@ export default function App() {
         setSplitOpen(true);
         break;
       case 'ocr': if (ocrTargets.length) setOcrOpen(true); break;
+      case 'watermark': openWatermark(); break;
       case 'print':
         if (!s.pages.length) break;
         if (!policyRef.current.print) { notify(policyRef.current.notice, 'error'); break; }
@@ -1236,6 +1238,34 @@ export default function App() {
     }
   }
 
+  // --- Marca de agua (Editar → Marca de agua…, src/watermark.js) ----------------------------------
+  // wmOpen: el diálogo abierto; wmExisting: claves de las páginas cuyo PDF ya trae marcas de agua de SpiderPDF
+  // (null mientras se buscan). Al aplicar se sustituyen; «Quitar» las quita (las guardadas, al guardar).
+  const [wmOpen, setWmOpen] = useState(false);
+  const [wmExisting, setWmExisting] = useState(null);
+
+  async function openWatermark() {
+    setWmExisting(null);
+    setWmOpen(true);
+    const s = stateRef.current;
+    const ids = [...new Set(s.pages.filter((p) => p.docId != null).map((p) => p.docId))];
+    const found = new Map(await Promise.all(ids.map(async (id) => [id, new Set(await pdf.watermarkPages(id))])));
+    const now = stateRef.current;
+    setWmExisting(new Set(now.pages.filter((p) => !p.stripWm && found.get(p.docId)?.has(p.index)).map((p) => p.key)));
+  }
+
+  function applyWatermark({ keys, watermark }) {
+    setWmOpen(false);
+    act({ type: 'setWatermark', keys, watermark, strip: wmExisting ?? new Set() });
+    notify(t('core.wm.applied', { count: keys.length }));
+  }
+
+  function removeWatermarks() {
+    setWmOpen(false);
+    act({ type: 'removeWatermarks', strip: wmExisting ?? new Set() });
+    notify(t('core.wm.removed'));
+  }
+
   // --- Sellos: se elige en el diálogo y se pone con un clic en la página -------------------------
   // pendingStamp: { name, src, wPt, hPt } el sello elegido, mientras la herramienta «Sello» espera el clic.
   const [stampOpen, setStampOpen] = useState(false);
@@ -1351,7 +1381,7 @@ export default function App() {
     undo: idle && state.past.length > 0, redo: idle && state.future.length > 0, selectAll: idle && has, duplicate: !!state.annotSel,
     rotateLeft: idle && hasTargetsNow && policy.pages, rotateRight: idle && hasTargetsNow && policy.pages,
     delete: idle && hasTargetsNow && (policy.pages || !!state.annotSel),
-    new: idle, ocr: idle && ocrTargets.length > 0 && policy.content, print: idle && has && policy.print,
+    new: idle, ocr: idle && ocrTargets.length > 0 && policy.content, watermark: idle && has && policy.content, print: idle && has && policy.print,
     newTab: idle, closeTab: idle, nextTab: idle && root.tabs.length > 1, prevTab: idle && root.tabs.length > 1,
     detachTab: idle && root.tabs.length > 1 && typeof desktop.detachTab === 'function', split: idle && has && policy.pages,
     share: idle && has, exportExcel: idle && has && policy.copy, exportWord: idle && has && policy.copy, reduce: idle && has && policy.content, protect: idle && has, unprotect: idle && has && willBeProtected(state),
@@ -1529,6 +1559,12 @@ export default function App() {
       )}
       {sigOpen && <SignatureDialog onPlace={placeSignature} onClose={() => setSigOpen(false)} />}
       {stampOpen && <StampDialog user={prefs.userName} onChoose={chooseStamp} onCancel={() => setStampOpen(false)} />}
+      {wmOpen && (
+        <WatermarkDialog
+          pages={state.pages} current={state.current} selected={state.selected} existing={wmExisting}
+          onApply={applyWatermark} onRemove={removeWatermarks} onCancel={() => setWmOpen(false)}
+        />
+      )}
       {printOpen && <PrintDialog state={state} onCancel={() => setPrintOpen(false)} onPrint={runPrint} />}
       {newOpen && <NewDocumentDialog onCancel={() => setNewOpen(false)} onCreate={createDocument} />}
       {shareOpen && (

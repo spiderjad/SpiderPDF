@@ -41,6 +41,8 @@ async function prepareTextFonts(core, refs) {
   const keys = new Set();
   for (const r of refs) for (const a of r.annots ?? []) if (a.type === 'textbox' && a.text) keys.add(familyKey(a.style.family, a.style.bold, a.style.italic));
   if (refs.some((r) => r.ocr?.length)) keys.add(familyKey('sans', false, false)); // capa de texto del OCR
+  // Marca de agua de texto: sus letras como trazos, con la fuente incluida (sin subconjunto: no se incrusta).
+  for (const r of refs) if (r.watermark?.kind === 'text') keys.add(familyKey(r.watermark.family ?? 'sans', !!r.watermark.bold, false));
   if (!keys.size) return;
   await Promise.all([...keys].filter((k) => !fontCache.has(k)).map(async (k) => {
     fontCache.set(k, new Uint8Array(await (await fetch(FONT_URLS[k])).arrayBuffer()));
@@ -112,7 +114,7 @@ self.onmessage = async ({ data: { id, op, args } }) => {
         break;
       }
       case 'render': {
-        const r = core.render(args.docId, args.index, args.scale, args.rot);
+        const r = core.render(args.docId, args.index, args.scale, args.rot, { hideWm: !!args.hideWm });
         result = await createImageBitmap(new ImageData(r.pixels, r.width, r.height));
         transfer = [result];
         break;
@@ -120,7 +122,7 @@ self.onmessage = async ({ data: { id, op, args } }) => {
       case 'renderJpeg': {
         // Para imprimir: la página a la escala pedida, ya comprimida (no viaja ni se guarda un mapa de bits enorme).
         // JPEG de calidad alta: mucho más rápido de codificar que PNG a 300 ppp y 5-10 veces más pequeño.
-        const r = core.render(args.docId, args.index, args.scale, args.rot ?? 0);
+        const r = core.render(args.docId, args.index, args.scale, args.rot ?? 0, { hideWm: !!args.hideWm });
         if (args.gray) {
           // Blanco y negro aquí mismo: no todos los controladores respetan la opción de color.
           const px = r.pixels;
@@ -255,6 +257,9 @@ self.onmessage = async ({ data: { id, op, args } }) => {
         break;
       case 'dropProtection':
         protections.delete(args.token);
+        break;
+      case 'watermarkPages': // marcas de agua de SpiderPDF que ya trae el PDF (para quitarlas o sustituirlas)
+        result = core.watermarkPages(args.docId, { isCancelled: () => cancelled.has(id) });
         break;
       case 'imageObjects': // «Borrar»: imágenes que se pueden quitar con un clic
         result = core.imageObjects(args.docId, args.index);

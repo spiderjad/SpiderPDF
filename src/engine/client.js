@@ -30,9 +30,12 @@ function job(op, args, transfer = [], onProgress) {
 const call = (op, args, transfer = []) => job(op, args, transfer).promise;
 
 /** Página del estado → referencia para el motor (las imágenes, ya en RGBA: el worker no decodifica imágenes). */
-async function toEngineRef({ docId, index, rot, annots, fields, textEdits, source, width, height, created, ocr }) {
+async function toEngineRef({ docId, index, rot, annots, fields, textEdits, source, width, height, created, ocr, watermark, stripWm }) {
   return {
     docId, index, rot,
+    // Marca de agua (src/watermark.js): la imagen, en RGBA como las firmas; stripWm quita las de SpiderPDF que ya trae.
+    watermark: watermark ? await toEngineWatermark(watermark) : undefined,
+    stripWm: stripWm || undefined,
     source, // nombre del archivo, para los grupos del índice al unir PDFs
     ocr: ocr?.length ? ocr : undefined, // capa de texto del OCR (src/ocr/layer.js)
     // Página nueva (docId null): el motor la crea con este tamaño y, si es una imagen, con sus píxeles.
@@ -205,6 +208,13 @@ export const pdf = {
   },
 
   /** Imágenes de una página que «Borrar» puede quitar con un clic: [{ rect }] (en caché). */
+  /** Páginas (índices) con marcas de agua de SpiderPDF en un PDF abierto (no cambian: con caché). */
+  watermarkPages(docId) {
+    if (docId == null) return Promise.resolve([]);
+    const key = `${docId}:`;
+    if (!wmCache.has(key)) wmCache.set(key, call('watermarkPages', { docId }).catch(() => []));
+    return wmCache.get(key);
+  },
   imageObjects(docId, index) {
     if (docId == null) return Promise.resolve([]);
     const key = `${docId}:${index}`;
@@ -216,7 +226,7 @@ export const pdf = {
   sourceBytes: (docId) => call('sourceBytes', { docId }),
 
   close(docId) {
-    for (const c of [fieldCache, runCache, charCache, outlineCache, linkCache, fontDataCache, scanCache, imageObjCache]) for (const key of c.keys()) if (key.startsWith(`${docId}:`)) c.delete(key);
+    for (const c of [fieldCache, runCache, charCache, outlineCache, linkCache, fontDataCache, scanCache, imageObjCache, wmCache]) for (const key of c.keys()) if (key.startsWith(`${docId}:`)) c.delete(key);
     return call('close', { docId });
   },
 };
@@ -227,6 +237,7 @@ const charCache = new Map();  // "docId:index" -> Promise<texto con cajas por ca
 const outlineCache = new Map(); // "docId:" -> Promise<índice>
 const linkCache = new Map(); // "docId:index" -> Promise<enlaces>
 const imageObjCache = new Map(); // "docId:index" -> Promise<imágenes que se pueden borrar>
+const wmCache = new Map(); // "docId:" -> Promise<páginas con marcas de agua de SpiderPDF>
 const fontDataCache = new Map();
 const scanCache = new Map(); // "docId:" -> Promise<índices de páginas escaneadas>
 const ocrCache = new WeakMap(); // palabras del OCR -> caracteres (se rehacen si cambian)
@@ -288,6 +299,13 @@ function dataUrlToBlob(url) {
   return new Blob([bytes], { type: m[1] || 'application/octet-stream' });
 }
 
+/** Marca de agua del estado → la del motor: la imagen, en RGBA (el worker no decodifica imágenes). */
+async function toEngineWatermark(wm) {
+  if (wm.kind !== 'image' || !wm.image?.src) return wm;
+  const { image } = await toEngineAnnot({ type: 'image', src: wm.image.src });
+  return { ...wm, image };
+}
+
 /** Anotación del estado → la que espera el motor. Las imágenes (firmas, sellos) llegan como src (data URL o Blob). */
 async function toEngineAnnot(a) {
   if ((a.type !== 'image' && a.type !== 'stamp') || a.image) return a;
@@ -325,7 +343,8 @@ export function scaleFor(displayWidthPts, cssWidth) {
  */
 export function renderPage(page, scale, { fresh = false } = {}) {
   if (page.docId == null) return renderCreated(page, scale); // página nueva: se dibuja aquí, rápido y sin caché
-  const key = `${page.docId}:${page.index}:${page.rot}:${scale}`;
+  // stripWm: sin las marcas de agua de SpiderPDF que se quitarán al guardar (otro render, otra entrada en la caché).
+  const key = `${page.docId}:${page.index}:${page.rot}:${scale}${page.stripWm ? ':nowm' : ''}`;
   if (fresh) { cache.delete(key); inflight.delete(key); }
   if (cache.has(key)) {
     const bmp = cache.get(key);
@@ -334,7 +353,7 @@ export function renderPage(page, scale, { fresh = false } = {}) {
     return Promise.resolve(bmp);
   }
   if (inflight.has(key)) return inflight.get(key);
-  const job = call('render', { docId: page.docId, index: page.index, scale, rot: page.rot }).then(
+  const job = call('render', { docId: page.docId, index: page.index, scale, rot: page.rot, hideWm: !!page.stripWm }).then(
     (bmp) => {
       inflight.delete(key);
       cache.set(key, bmp);

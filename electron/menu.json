@@ -49,6 +49,7 @@
       { "label": { "es": "Insertar imagen como página…", "en": "Insert image as page…", "ca": "Insereix una imatge com a pàgina…" }, "cmd": "insertImage" },
       "-",
       { "label": { "es": "Reconocer texto (OCR)…", "en": "Recognize text (OCR)…", "ca": "Reconeix el text (OCR)…" }, "cmd": "ocr" },
+      { "label": { "es": "Marca de agua…", "en": "Watermark…", "ca": "Marca d'aigua…" }, "cmd": "watermark" },
       "-",
       { "label": { "es": "Preferencias…", "en": "Preferences…", "ca": "Preferències…" }, "cmd": "prefs", "accel": "CmdOrCtrl+,", "mac": { "hidden": true } }
     ]

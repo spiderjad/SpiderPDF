@@ -7,6 +7,7 @@ import { pdf } from '../engine/client.js';
 import { displaySize } from './PageImage.jsx';
 import { AnnotShape, NOTE_PT, boxPx, pageTurn } from './AnnotShapes.jsx';
 import TextLayer from './TextLayer.jsx';
+import WatermarkLayer from './WatermarkLayer.jsx';
 import TextBoxes from './TextBoxes.jsx';
 import { caretAt, charIndexAt, wordAt, lineRects } from '../textGeom.js';
 import { snapAngle } from '../stamps.js';
@@ -343,6 +344,9 @@ export default function PageOverlay({
       ref={rootRef}
       onPointerEnter={() => { loadChars(); }}
     >
+      {/* 0. Marca de agua pendiente (debajo de todo lo que añade el usuario) */}
+      {page.watermark && <WatermarkLayer wm={page.watermark} wPts={wPts} hPts={hPts} W={W} H={H} />}
+
       {/* 1. Resaltados y tinta. Este SVG recibe también el dibujo y los arrastres. */}
       <svg
         ref={svgRef}

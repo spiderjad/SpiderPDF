@@ -1,0 +1,60 @@
+/*
+ * Marca de agua (src/components/WatermarkDialog.jsx). Prefijo wm-.
+ * La ventana es v-dialog de spider-ui; aquí solo la disposición: opciones a la izquierda y vista previa a la derecha
+ * (debajo en ventanas estrechas). spider-ui se carga después que este archivo (main.jsx): lo que cambia medidas de
+ * sus clases va con .wm-dialog delante para pesar más.
+ */
+
+.v-dialog.wm-dialog { width: 880px; }
+.wm-body { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 24px; align-items: start; }
+.wm-options { display: grid; gap: 14px; min-width: 0; }
+.wm-options .v-field { margin: 0; }
+
+.wm-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.wm-row--fields { gap: 20px; align-items: flex-start; }
+.wm-unit { color: var(--sp-text-secondary); font-size: 13px; font-variant-numeric: tabular-nums; min-width: 40px; }
+.wm-dialog .wm-num { width: 84px; flex: none; text-align: right; }
+.wm-range { flex: 1; min-width: 140px; accent-color: var(--sp-text-primary); }
+.wm-range:focus-visible { outline: 2px solid var(--sp-focus); outline-offset: 2px; }
+.wm-dialog .wm-range-text { width: 160px; flex: none; height: 30px; }
+.wm-help { margin: -6px 0 0; }
+
+.wm-presets { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+
+/* Grupos de opciones: v-segmented con semántica de radio (seleccionado = aria-checked). */
+.wm-seg { flex-wrap: wrap; }
+.wm-dialog .wm-seg .v-segmented__item[aria-checked="true"] {
+  color: var(--sp-text-primary);
+  background: var(--sp-bg);
+  border-color: var(--sp-border);
+  box-shadow: var(--sp-shadow);
+}
+
+.wm-colors { display: flex; gap: 6px; height: 36px; align-items: center; }
+.wm-swatch { width: 22px; height: 22px; padding: 0; border: 0; border-radius: 999px; cursor: pointer; }
+.wm-swatch[aria-checked="true"] { box-shadow: 0 0 0 2px var(--sp-bg), 0 0 0 4px var(--sp-text-primary); }
+.wm-swatch:focus-visible { outline: 2px solid var(--sp-focus); outline-offset: 3px; }
+
+.wm-check { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; }
+.wm-check[aria-disabled="true"] { color: var(--sp-text-tertiary); cursor: default; }
+.wm-check input { margin: 0; accent-color: var(--sp-text-primary); }
+.wm-check input:focus-visible { outline: 2px solid var(--sp-focus); outline-offset: 2px; }
+.wm-thumb { max-height: 40px; max-width: 120px; padding: 2px; border-radius: var(--sp-radius); }
+
+.wm-pages { display: grid; gap: 8px; border: 0; padding: 0; margin: 0; min-width: 0; }
+
+/* Vista previa: la página (blanca, también en oscuro) sobre el fondo de la mesa. */
+.wm-side {
+  position: sticky; /* la vista previa se queda a la vista al bajar por las opciones */
+  top: 0;
+  display: grid; gap: 12px; justify-items: center; padding: 12px; border-radius: var(--sp-radius); background: var(--sp-canvas);
+}
+.wm-preview-label { justify-self: start; margin: 0; }
+.wm-preview { position: relative; box-shadow: var(--paper-shadow); }
+.wm-existing { display: grid; gap: 6px; justify-items: start; width: 100%; font-size: 13px; }
+.wm-existing p { margin: 0; }
+
+@media (max-width: 760px) {
+  .wm-body { grid-template-columns: minmax(0, 1fr); }
+  .wm-side { position: static; }
+}

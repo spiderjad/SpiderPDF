@@ -25,7 +25,8 @@ function loadPrefs() {
 function marks(page) {
   const redact = page.annots.some((a) => a.type === 'redact');
   const other = page.annots.some((a) => a.type !== 'redact')
-    || Object.keys(page.textEdits ?? {}).length > 0 || Object.keys(page.fields ?? {}).length > 0 || page.ocr?.length > 0;
+    || Object.keys(page.textEdits ?? {}).length > 0 || Object.keys(page.fields ?? {}).length > 0 || page.ocr?.length > 0
+    || !!page.watermark || !!page.stripWm;
   return { redact, other };
 }
 

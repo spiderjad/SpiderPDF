@@ -14,6 +14,7 @@ import { familyKey, usesPdfFont, wrapLines, missingChars, LINE_HEIGHT } from '..
 import { findMatches, lineRects, hasRealText } from '../textGeom.js';
 import { mapOutline, pruneOutline, flatten } from '../outline.js';
 import { incrementalPlan } from '../signed.js';
+import { wmPlacements, imageBox } from '../watermark.js';
 import { ALL_PERMS } from '../security.js';
 import { downscaleRGBA, targetSize } from './resample.js';
 import { fontTraits } from './fontTraits.js';
@@ -38,6 +39,10 @@ const ANNOT = { TEXT: 1, HIGHLIGHT: 9, STAMP: 13, INK: 15, POPUP: 16, FILEATTACH
 // «Quitar información oculta»: notas (su texto no se ve en la página), sus ventanas y adjuntos.
 const HIDDEN_ANNOTS = new Set([ANNOT.TEXT, ANNOT.POPUP, ANNOT.FILEATTACHMENT, ANNOT.SOUND]);
 const OBJ = { TEXT: 1, PATH: 2, IMAGE: 3, SHADING: 4, FORM: 5 };
+// Marca de contenido de las marcas de agua de SpiderPDF (dentro de /Artifact): así se reconocen para quitarlas
+// después y para no tomarlas por contenido (Borrar, Exportar a Word y a Excel, OCR).
+export const WM_MARK = 'SpiderPDFWatermark';
+const SEG = { LINETO: 0, BEZIERTO: 1, MOVETO: 2 };
 const ANNOT_FLAG_PRINT = 4;
 const FIELD = { 0: 'unknown', 1: 'button', 2: 'checkbox', 3: 'radio', 4: 'combo', 5: 'list', 6: 'text', 7: 'signature' };
 const FIELD_READONLY = 1;
@@ -289,10 +294,15 @@ export class PdfCore {
   }
 
   // --- render -----------------------------------------------------------------
-  /** Renderiza una página a RGBA. scale: píxeles por punto. rot: cuartos de vuelta extra. */
-  render(docId, index, scale = 1, rot = 0) {
+  /**
+   * Renderiza una página a RGBA. scale: píxeles por punto. rot: cuartos de vuelta extra.
+   * hideWm: sin las marcas de agua de SpiderPDF (las que se quitarán al guardar); el PDF no cambia.
+   */
+  render(docId, index, scale = 1, rot = 0, { hideWm = false } = {}) {
     const entry = this.entry(docId);
     const page = this.openPage(entry, index);
+    const hidden = hideWm ? this.watermarkObjects(page) : [];
+    for (const o of hidden) this.m.FPDFPageObj_SetIsActive(o, 0);
     try {
       const pw = this.m.FPDF_GetPageWidthF(page);
       const ph = this.m.FPDF_GetPageHeightF(page);
@@ -313,6 +323,7 @@ export class PdfCore {
         this.m.FPDFBitmap_Destroy(bmp);
       }
     } finally {
+      for (const o of hidden) this.m.FPDFPageObj_SetIsActive(o, 1);
       this.closePage(entry, page);
     }
   }
@@ -809,6 +820,213 @@ export class PdfCore {
     }
   }
 
+  // --- Marca de agua (src/watermark.js) --------------------------------------------------------
+  /** Nombre de una marca de contenido (UTF-16 en PDFium). */
+  markName(mark) {
+    return this.withMem(4, (out) => {
+      if (!this.m.FPDFPageObjMark_GetName(mark, 0, 0, out)) return '';
+      const n = this.rt.getValue(out, 'i32');
+      if (!(n > 2)) return '';
+      return this.withMem(n, (p) => (this.m.FPDFPageObjMark_GetName(mark, p, n, out) ? this.rt.UTF16ToString(p) : ''));
+    });
+  }
+
+  /** ¿Es parte de una marca de agua de SpiderPDF? */
+  isWatermark(o) {
+    const n = this.m.FPDFPageObj_CountMarks(o);
+    for (let i = 0; i < n; i++) if (this.markName(this.m.FPDFPageObj_GetMark(o, i)) === WM_MARK) return true;
+    return false;
+  }
+
+  /** Objetos de primer nivel de la página que son marcas de agua de SpiderPDF. */
+  watermarkObjects(page) {
+    const out = [];
+    const n = this.m.FPDFPage_CountObjects(page);
+    for (let k = 0; k < n; k++) {
+      const o = this.m.FPDFPage_GetObject(page, k);
+      if (this.isWatermark(o)) out.push(o);
+    }
+    return out;
+  }
+
+  /** Páginas (índices) con marcas de agua de SpiderPDF. */
+  watermarkPages(docId, { isCancelled } = {}) {
+    const h = this.doc(docId);
+    const out = [];
+    const n = this.m.FPDF_GetPageCount(h);
+    for (let i = 0; i < n; i++) {
+      if (isCancelled?.()) break;
+      const page = this.m.FPDF_LoadPage(h, i);
+      if (!page) continue;
+      try {
+        if (this.watermarkObjects(page).length) out.push(i);
+      } finally {
+        this.m.FPDF_ClosePage(page);
+      }
+    }
+    return out;
+  }
+
+  /** Quita de una página del documento de trabajo las marcas de agua de SpiderPDF. → cuántos objetos. */
+  removeWatermarks(entry, index) {
+    const page = this.openPage(entry, index);
+    try {
+      const objs = this.watermarkObjects(page);
+      for (const o of objs) {
+        this.m.FPDFPage_RemoveObject(page, o);
+        this.m.FPDFPageObj_Destroy(o);
+      }
+      if (objs.length) this.m.FPDFPage_GenerateContent(page);
+      return objs.length;
+    } finally {
+      this.closePage(entry, page);
+    }
+  }
+
+  /**
+   * Contornos de las letras de text con una fuente incluida (clave de familyKey), en em (tamaño 1): no se
+   * incrusta ninguna fuente, la marca de agua se escribe como trazos (no se selecciona, no se busca y no se
+   * exporta como texto en ningún visor). → { glyphs: [{ adv, segs: [[tipo, x, y, cierra]] }], box: [x0, y0, x1, y1] }
+   */
+  glyphOutlines(key, text) {
+    if (!this.fontBytes) throw new Error(tr('engine.textFontsUnavailable'));
+    this.glyphCache ??= new Map();
+    const cacheKey = `${key}|${text}`;
+    if (this.glyphCache.has(cacheKey)) return this.glyphCache.get(cacheKey);
+    const tmp = this.m.FPDF_CreateNewDocument();
+    if (!tmp) throw new Error(tr('engine.createDocFailed'));
+    try {
+      const data = this.fontBytes(key);
+      const p = this.malloc(data.length);
+      this.heap().set(data, p);
+      const font = this.m.FPDFText_LoadFont(tmp, p, data.length, 2 /* TrueType */, 1);
+      this.free(p);
+      if (!font) throw new Error(tr('engine.textFontLoadFailed'));
+      const glyphs = [];
+      let pen = 0;
+      let box = [Infinity, Infinity, -Infinity, -Infinity];
+      try {
+        this.withMem(8, (q) => {
+          for (const ch of text) {
+            const cp = ch.codePointAt(0);
+            const adv = this.m.FPDFFont_GetGlyphWidth(font, cp, 1, q) ? this.floats(q, 1)[0] : 0.5;
+            const gp = this.m.FPDFFont_GetGlyphPath(font, cp, 1);
+            const n = gp ? this.m.FPDFGlyphPath_CountGlyphSegments(gp) : 0;
+            const segs = [];
+            for (let i = 0; i < n; i++) {
+              const seg = this.m.FPDFGlyphPath_GetGlyphPathSegment(gp, i);
+              if (!seg || !this.m.FPDFPathSegment_GetPoint(seg, q, q + 4)) continue;
+              const [x, y] = this.floats(q, 2);
+              segs.push([this.m.FPDFPathSegment_GetType(seg), pen + x, y, !!this.m.FPDFPathSegment_GetClose(seg)]);
+              box = [Math.min(box[0], pen + x), Math.min(box[1], y), Math.max(box[2], pen + x), Math.max(box[3], y)];
+            }
+            glyphs.push({ adv, segs });
+            pen += adv;
+          }
+        });
+      } finally {
+        this.m.FPDFFont_Close(font);
+      }
+      if (!(box[2] > box[0])) box = [0, 0, pen, 0.7];
+      const out = { glyphs, box };
+      if (this.glyphCache.size > 50) this.glyphCache.clear();
+      this.glyphCache.set(cacheKey, out);
+      return out;
+    } finally {
+      this.m.FPDF_CloseDocument(tmp);
+    }
+  }
+
+  /**
+   * Marca de agua en una página del documento de trabajo, como contenido (trazos o una imagen), centrada o en
+   * mosaico, delante o detrás de todo, marcada con /Artifact y WM_MARK. wm: la de src/watermark.js, con la imagen
+   * ya en RGBA (image: { width, height, pixels }). Se coloca sobre la página tal como se ve (con su giro).
+   */
+  addWatermark(entry, index, wm) {
+    const page = this.openPage(entry, index);
+    try {
+      const [l, b, r, t] = this.box(page);
+      const R = this.m.FPDFPage_GetRotation(page);
+      const W = R % 2 ? t - b : r - l; // tamaño visible
+      const H = R % 2 ? r - l : t - b;
+      const toPage = (x, y) => {
+        const [u, v] = fromDisplay(x / W, y / H, R);
+        return [l + u * (r - l), t - v * (t - b)];
+      };
+      const [cr, cg, cb] = hexToRgb(wm.color ?? '#6B7280');
+      const alpha = Math.round(Math.min(1, Math.max(0, wm.opacity ?? 0.3)) * 255);
+      const objs = [];
+      if (wm.kind === 'image') {
+        if (!wm.image?.pixels) return;
+        const { w: bw, h: bh } = imageBox({ ...wm, image: { pxW: wm.image.width, pxH: wm.image.height } }, W);
+        const { angle, centers } = wmPlacements(wm, { W, H }, { w: bw, h: bh });
+        const phi = ((angle + R * 90) * Math.PI) / 180;
+        const pixels = new Uint8ClampedArray(wm.image.pixels);
+        if (alpha < 255) for (let i = 3; i < pixels.length; i += 4) pixels[i] = Math.round((pixels[i] * alpha) / 255);
+        const bmp = this.bitmapFromRGBA(wm.image.width, wm.image.height, pixels);
+        try {
+          for (const [x, y] of centers) {
+            const [X, Y] = toPage(x, y);
+            const obj = this.m.FPDFPageObj_NewImageObj(entry.handle);
+            if (!this.m.FPDFImageObj_SetBitmap(0, 0, obj, bmp)) {
+              this.m.FPDFPageObj_Destroy(obj);
+              throw new Error(tr('engine.imageInsertFailed'));
+            }
+            const a = bw * Math.cos(phi); const bb = bw * Math.sin(phi);
+            const c = -bh * Math.sin(phi); const d = bh * Math.cos(phi);
+            this.m.FPDFImageObj_SetMatrix(obj, a, bb, c, d, X - (a + c) / 2, Y - (bb + d) / 2);
+            objs.push(obj);
+          }
+        } finally {
+          this.m.FPDFBitmap_Destroy(bmp);
+        }
+      } else {
+        const text = String(wm.text ?? '').trim();
+        if (!text) return;
+        const size = wm.size ?? 72;
+        const { glyphs, box } = this.glyphOutlines(familyKey(wm.family ?? 'sans', !!wm.bold, false), text);
+        const bw = (box[2] - box[0]) * size; const bh = (box[3] - box[1]) * size;
+        const cx = ((box[0] + box[2]) / 2) * size; const cy = ((box[1] + box[3]) / 2) * size;
+        const { angle, centers } = wmPlacements(wm, { W, H }, { w: bw, h: bh });
+        const phi = ((angle + R * 90) * Math.PI) / 180;
+        const segs = glyphs.flatMap((g) => g.segs);
+        const first = segs.findIndex((g) => g[0] === SEG.MOVETO);
+        if (first < 0) return; // solo espacios
+        for (const [x, y] of centers) {
+          const [X, Y] = toPage(x, y);
+          const P = (gx, gy) => [gx * size - cx, gy * size - cy];
+          const obj = this.m.FPDFPageObj_CreateNewPath(...P(segs[first][1], segs[first][2]));
+          for (let k = first + 1; k < segs.length; k++) {
+            const [type, gx, gy, close] = segs[k];
+            if (type === SEG.MOVETO) this.m.FPDFPath_MoveTo(obj, ...P(gx, gy));
+            else if (type === SEG.LINETO) this.m.FPDFPath_LineTo(obj, ...P(gx, gy));
+            else if (type === SEG.BEZIERTO && k + 2 < segs.length) {
+              this.m.FPDFPath_BezierTo(obj, ...P(gx, gy), ...P(segs[k + 1][1], segs[k + 1][2]), ...P(segs[k + 2][1], segs[k + 2][2]));
+              k += 2;
+              if (segs[k][3]) this.m.FPDFPath_Close(obj);
+              continue;
+            }
+            if (close) this.m.FPDFPath_Close(obj);
+          }
+          this.m.FPDFPageObj_SetFillColor(obj, cr, cg, cb, alpha);
+          this.m.FPDFPath_SetDrawMode(obj, 2 /* relleno, regla del número de vueltas */, 0);
+          this.m.FPDFPageObj_Transform(obj, Math.cos(phi), Math.sin(phi), -Math.sin(phi), Math.cos(phi), X, Y);
+          objs.push(obj);
+        }
+      }
+      let at = 0;
+      for (const obj of objs) {
+        this.m.FPDFPageObj_AddMark(obj, 'Artifact');
+        this.m.FPDFPageObj_AddMark(obj, WM_MARK);
+        if (wm.layer === 'back') this.m.FPDFPage_InsertObjectAtIndex(page, obj, at++);
+        else this.m.FPDFPage_InsertObject(page, obj);
+      }
+      if (objs.length) this.m.FPDFPage_GenerateContent(page);
+    } finally {
+      this.closePage(entry, page);
+    }
+  }
+
   // --- Borrar: imágenes de la página ------------------------------------------------------
   /**
    * Imágenes de primer nivel de una página (firma escaneada, logo, foto) con su caja en fracciones sin girar, para
@@ -825,7 +1043,7 @@ export class PdfCore {
       const n = this.m.FPDFPage_CountObjects(page);
       for (let k = 0; k < n; k++) {
         const o = this.m.FPDFPage_GetObject(page, k);
-        if (this.m.FPDFPageObj_GetType(o) !== OBJ.IMAGE) continue;
+        if (this.m.FPDFPageObj_GetType(o) !== OBJ.IMAGE || this.isWatermark(o)) continue;
         const [x0, y0, x1, y1] = this.objBounds(o); // izquierda, abajo, derecha, arriba
         const area = ((x1 - x0) * (y1 - y0)) / (W * H);
         if (area < 0.0004 || area > 0.85) continue;
@@ -1129,7 +1347,7 @@ export class PdfCore {
       const n = this.m.FPDFPage_CountObjects(page);
       for (let k = 0; k < n; k++) {
         const o = this.m.FPDFPage_GetObject(page, k);
-        if (this.m.FPDFPageObj_GetType(o) !== OBJ.IMAGE) continue;
+        if (this.m.FPDFPageObj_GetType(o) !== OBJ.IMAGE || this.isWatermark(o)) continue;
         const [x0, y0, x1, y1] = this.objBounds(o);
         if ((x1 - x0) < 0.02 * W && (y1 - y0) < 0.02 * H) continue;
         const alpha = this.imageHasAlpha(h, page, o);
@@ -1197,7 +1415,7 @@ export class PdfCore {
         for (let k = 0; k < count; k++) {
           const o = this.m.FPDFPage_GetObject(page, k);
           const type = this.m.FPDFPageObj_GetType(o);
-          if (type !== OBJ.IMAGE && type !== OBJ.FORM) continue;
+          if ((type !== OBJ.IMAGE && type !== OBJ.FORM) || this.isWatermark(o)) continue;
           const [x0, y0, x1, y1] = this.objBounds(o);
           covered += Math.max(0, Math.min(x1, r) - Math.max(x0, l)) * Math.max(0, Math.min(y1, t) - Math.max(y0, b));
         }
@@ -1590,6 +1808,8 @@ export class PdfCore {
           this.m.FPDFPage_SetRotation(page, (this.m.FPDFPage_GetRotation(page) + r.rot) % 4);
           this.m.FPDF_ClosePage(page);
         }
+        // Marcas de agua de SpiderPDF que trae el PDF y que se quitan (o se sustituyen por otra).
+        if (r.stripWm) this.removeWatermarks(dest, i);
         // Borrar (imágenes del PDF y zonas en blanco): antes que lo que añade el usuario, que puede ir encima.
         const erase = (r.annots ?? []).filter((a) => a.type === 'erase');
         if (erase.length) {
@@ -1602,6 +1822,8 @@ export class PdfCore {
         if (annots?.length) this.applyAnnots(dest, i, annots, zonesOf(r), fonts);
         const zones = zonesOf(r);
         if (zones.length) this.warnings.push(...this.redact(dest, i, zones));
+        // Marca de agua: lo último, también encima (o debajo) de lo redactado, que ya no está.
+        if (r.watermark) this.addWatermark(dest, i, r.watermark);
       });
 
       onProgress?.({ done: refs.length, total: refs.length });
@@ -1838,7 +2060,7 @@ export class PdfCore {
       this.withMem(8, (pt) => {
         for (let i = 0; i < n && out.length < 20000; i++) {
           const o = this.m.FPDFPage_GetObject(page, i);
-          if (this.m.FPDFPageObj_GetType(o) !== 2) continue; // 2 = trazado
+          if (this.m.FPDFPageObj_GetType(o) !== 2 || this.isWatermark(o)) continue; // 2 = trazado
           // Solo relleno (sin trazo): es el fondo de una celda, salvo que sea fino (una línea dibujada como rectángulo).
           const stroked = this.withMem(8, (q) => (this.m.FPDFPath_GetDrawMode(o, q, q + 4) ? this.rt.getValue(q + 4, 'i32') : 1));
           if (!stroked) {

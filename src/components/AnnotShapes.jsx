@@ -3,6 +3,7 @@ import { toDisplay, rectToDisplay } from '../geometry.js';
 import { pdf } from '../engine/client.js';
 import { displaySize } from './PageImage.jsx';
 import { textboxCss } from '../fonts.js';
+import WatermarkLayer from './WatermarkLayer.jsx';
 
 export const NOTE_PT = 20; // tamaño del icono de nota en el PDF (ver pdfium-core addAnnot)
 
@@ -138,7 +139,7 @@ export function AnnotPreview({ page, cssWidth }) {
     return () => { alive = false; };
   }, [edited, page.docId, page.index, page.hasForm]);
 
-  if (!page.annots?.length && !edited) return null;
+  if (!page.annots?.length && !edited && !page.watermark) return null;
 
   const R = pageTurn(page);
   const { w: wPts, h: hPts } = displaySize(page);
@@ -147,6 +148,8 @@ export function AnnotPreview({ page, cssWidth }) {
   const pxPerPt = W / wPts;
 
   return (
+    <>
+    {page.watermark && <WatermarkLayer wm={page.watermark} wPts={wPts} hPts={hPts} W={W} H={H} />}
     <svg width={W} height={H} className="pointer-events-none absolute inset-0" aria-hidden="true">
       {[...page.annots].sort(byLayer).map((a) => <AnnotShape key={a.id} a={a} W={W} H={H} R={R} pxPerPt={pxPerPt} svgNotes />)}
       {fields?.map((f) => {
@@ -175,5 +178,6 @@ export function AnnotPreview({ page, cssWidth }) {
         );
       })}
     </svg>
+    </>
   );
 }
