@@ -1,17 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, Settings } from 'lucide-react';
 import AppIcon from './AppIcon.jsx';
 import { formatAccel } from '../menu.js';
 import { useT } from '../i18n/index.js';
 import './TitleBar.css';
 
 /**
- * Barra de título de Windows y Linux: icono, menús (Archivo, Editar, Ver) y nombre del documento.
+ * Barra de título de Windows y Linux: icono, menús (Archivo, Editar, Ver), la ruedita de Preferencias y el nombre del
+ * documento.
  * Los botones de minimizar, maximizar y cerrar los pinta el sistema a la derecha (Window Controls Overlay).
  * Teclado como en Windows: Alt o F10 activan la barra, Alt+letra abre un menú,
  * flechas para moverse, Intro para elegir, Esc para salir.
  */
-export default function TitleBar({ model, title, dirty, isEnabled, onCommand }) {
+export default function TitleBar({ model, title, dirty, isEnabled, onCommand, onPrefs }) {
   const t = useT();
   const [open, setOpen] = useState(null);      // índice del menú abierto
   const [active, setActive] = useState(-1);    // elemento resaltado dentro del menú
@@ -251,6 +252,18 @@ export default function TitleBar({ model, title, dirty, isEnabled, onCommand }) 
           );
         })}
       </div>
+
+      {onPrefs && (
+        <button
+          type="button"
+          className="v-btn-icon v-btn--sm no-drag tb-gear"
+          aria-label={t('core.prefs.title')}
+          title={`${t('core.prefs.title')} (${formatAccel('CmdOrCtrl+,')})`}
+          onClick={onPrefs}
+        >
+          <Settings size={16} strokeWidth={1.75} aria-hidden="true" />
+        </button>
+      )}
 
       <div className="titlebar-title flex min-w-0 flex-1 items-center justify-center gap-2 px-4 text-xs text-muted">
         <span className="truncate">{title ?? 'SpiderPDF'}</span>

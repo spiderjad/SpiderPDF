@@ -5,3 +5,4 @@
 .tb-top { font-weight: 400; padding: 0 10px; }
 .tb-item { gap: 24px; white-space: nowrap; }
 .tb-item[aria-disabled="true"] { cursor: default; }
+.tb-gear { margin-left: 2px; } /* Preferencias, justo después de «Ver» */

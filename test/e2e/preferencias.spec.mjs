@@ -103,3 +103,20 @@ test('preferencias: guardar, cancelar, validar y usarlas al guardar, reducir y e
   expect(errors).toEqual([]);
   await app.close();
 });
+
+test('la ruedita junto a «Ver» abre las Preferencias', async () => {
+  const dir = await tempDir();
+  const { app, win } = await launch(dir);
+  const gear = win.getByRole('button', { name: 'Preferencias', exact: true });
+  await expect(gear).toHaveAttribute('title', 'Preferencias (Ctrl+,)');
+  // Justo a la derecha del menú «Ver».
+  const ver = await win.getByRole('menubar').getByRole('menuitem', { name: 'Ver' }).boundingBox();
+  const g = await gear.boundingBox();
+  expect(g.x).toBeGreaterThan(ver.x + ver.width - 1);
+  expect(g.x - (ver.x + ver.width)).toBeLessThan(12);
+  await gear.click();
+  await expect(win.getByRole('dialog', { name: 'Preferencias' })).toBeVisible();
+  await win.keyboard.press('Escape');
+  await expect(win.getByRole('dialog', { name: 'Preferencias' })).toHaveCount(0);
+  await app.close();
+});

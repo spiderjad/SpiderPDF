@@ -634,7 +634,8 @@ para «Insertar» y «Exportar».
   texto girado salen como párrafos normales; las celdas de las tablas sin negritas; tamaño de página del documento = el
   de la primera página; títulos sobre una franja de color sin la franja; dibujos vectoriales (gráficos) no se exportan.
 
-**Preferencias (hecho, pendiente del visto bueno):** Editar → Preferencias… (Ctrl+,; `PreferencesDialog.jsx`).
+**Preferencias (hecho, pendiente del visto bueno):** Editar → Preferencias… (Ctrl+,; `PreferencesDialog.jsx`) y, en
+Windows y Linux, la ruedita (⚙) de la barra de título, justo a la derecha de «Ver» (`TitleBar` → `onPrefs`; 0.2.1).
 - `src/prefs.js` (`spiderpdf:prefs`, probado en `test/share.test.js`): `lang` (ver «Idiomas»), `ai`, `userName`
   (≤ 80, sin caracteres de control; autor de lo exportado a Word y Excel), `outputDir` ('' = la carpeta del original)
   y `quality` (clave de `REDUCE_LEVELS`, el nivel con el que se abre «Reducir tamaño»). `outputFolder(prefs, carpetaOriginal)`.

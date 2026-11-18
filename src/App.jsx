@@ -1415,7 +1415,7 @@ export default function App() {
   return (
     <div className="flex h-full flex-col">
       {customMenu && (
-        <TitleBar model={menu} title={docName} dirty={state.dirty} isEnabled={isEnabled} onCommand={command} />
+        <TitleBar model={menu} title={docName} dirty={state.dirty} isEnabled={isEnabled} onCommand={command} onPrefs={() => run('prefs')} />
       )}
       <TabBar
         tabs={root.tabs.map((x) => {
