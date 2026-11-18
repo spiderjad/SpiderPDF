@@ -18,8 +18,9 @@ Argentina, trabaja en España).
 - `npm run dev`: app Electron con recarga en caliente.
 - `npm run web`: la misma interfaz en el navegador (http://localhost:5173), útil para depurar UI.
 - `node test/make-fixtures.js`: regenera los PDFs de ejemplo de `test/fixtures`.
-- `npm run release:win`: como `dist:win`, pero sube el instalador, su `.blockmap` y `latest.yml` a un borrador de
-  release en GitHub (necesita `GH_TOKEN`; pasos en `docs/publicar-version.md`). Las copias instaladas se actualizan
+- `npm run release:win`: como `dist:win`, pero crea el borrador de release en GitHub (`build/release.cjs`: antes de
+  subir, porque electron-builder solo a veces crea dos) y sube el instalador, su `.blockmap` y `latest.yml` (necesita
+  `GH_TOKEN`, p. ej. `$env:GH_TOKEN = (gh auth token)`; pasos en `docs/publicar-version.md`). Las copias instaladas se actualizan
   cuando Diego publica el borrador.
 - `npm run dist:win`: instalador NSIS x64 en `release/SpiderPDF Setup x.y.z.exe`, sin publicar nada (sin firma de código por ahora;
   SmartScreen avisa «Editor desconocido»). `npm run dist:mac`: solo en un Mac, ver `docs/compilar-en-mac.md`.
