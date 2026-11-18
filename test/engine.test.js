@@ -1661,6 +1661,69 @@ console.log('  borrar (imágenes del PDF y zonas en blanco):');
   core.close(E.docId);
 }
 
+console.log('  sellos (anotación /Stamp con apariencia, girados, fijados):');
+{
+  const doc = await PDFDocument.create();
+  doc.addPage([595, 842]);
+  const S = core.open(await doc.save());
+  // Imagen del sello: 80 × 30 px, rojo opaco con un borde transparente de 5 px.
+  const w = 80; const h = 30;
+  const pixels = new Uint8ClampedArray(w * h * 4);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const o = (y * w + x) * 4;
+    const inside = x >= 5 && x < w - 5 && y >= 5 && y < h - 5;
+    pixels.set(inside ? [200, 20, 20, 255] : [0, 0, 0, 0], o);
+  }
+  const stamp = (extra) => ({ id: 's1', type: 'stamp', rect: [0.4, 0.4, 0.6, 0.45], k: 0, angle: 0, label: 'Pagado', author: 'Diego', image: { width: w, height: h, pixels }, ...extra });
+  const inspect = (bytes) => {
+    const d = core.open(bytes);
+    const pg = core.m.FPDF_LoadPage(core.doc(d.docId), 0);
+    const annots = [];
+    for (let i = 0; i < core.m.FPDFPage_GetAnnotCount(pg); i++) {
+      const an = core.m.FPDFPage_GetAnnot(pg, i);
+      const rect = core.withMem(16, (p) => (core.m.FPDFAnnot_GetRect(an, p) ? core.floats(p, 4) : null));
+      const contents = core.readWide((buf, len) => core.m.FPDFAnnot_GetStringValue(an, 'Contents', buf, len));
+      const hasAP = core.m.FPDFAnnot_GetAP(an, 0, 0, 0) > 2;
+      annots.push({ subtype: core.m.FPDFAnnot_GetSubtype(an), rect, contents, hasAP });
+      core.m.FPDFPage_CloseAnnot(an);
+    }
+    const objects = core.m.FPDFPage_CountObjects(pg);
+    core.m.FPDF_ClosePage(pg);
+    const r = core.render(d.docId, 0, 1, 0);
+    core.close(d.docId);
+    const px = (u, v) => { const o = (Math.floor(v * r.height) * r.width + Math.floor(u * r.width)) * 4; return [r.pixels[o], r.pixels[o + 1], r.pixels[o + 2]]; };
+    return { annots, objects, px };
+  };
+  const red = ([r, g, b]) => r > 150 && g < 80 && b < 80;
+
+  t('  · se guarda como anotación /Stamp con apariencia, su texto y autor, y se ve (también en otros visores)', () => {
+    const r = inspect(core.compose([{ docId: S.docId, index: 0, rot: 0, annots: [stamp()] }]));
+    assert.equal(r.annots.length, 1);
+    assert.equal(r.annots[0].subtype, 13);
+    assert.equal(r.annots[0].contents, 'Pagado');
+    assert.ok(r.annots[0].hasAP, 'lleva su apariencia /AP');
+    assert.equal(r.objects, 0, 'no toca el contenido de la página');
+    assert.ok(red(r.px(0.5, 0.425)), `rojo en el centro del sello: ${r.px(0.5, 0.425)}`);
+    assert.ok(!red(r.px(0.3, 0.425)), 'fuera del sello, nada');
+  });
+
+  t('  · girado 90°: la caja de la anotación pasa a ser alta y estrecha', () => {
+    const r = inspect(core.compose([{ docId: S.docId, index: 0, rot: 0, annots: [stamp({ angle: 90 })] }]));
+    const [l, top, rr, bottom] = r.annots[0].rect;
+    assert.ok(Math.abs(rr - l - 0.05 * 842) < 1, `ancho = el alto que tenía: ${rr - l}`);
+    assert.ok(Math.abs(top - bottom - 0.2 * 595) < 1, `alto = el ancho que tenía: ${top - bottom}`);
+    assert.ok(red(r.px(0.5, 0.425)));
+  });
+
+  t('  · «Fijar en la página»: contenido de la página, sin anotación', () => {
+    const r = inspect(core.compose([{ docId: S.docId, index: 0, rot: 0, annots: [stamp({ flat: true, angle: 20 })] }]));
+    assert.equal(r.annots.length, 0);
+    assert.equal(r.objects, 1);
+    assert.ok(red(r.px(0.5, 0.425)));
+  });
+  core.close(S.docId);
+}
+
 await mkdir('test/out', { recursive: true });
 await writeFile('test/out/resultado.pdf', out);
 console.log(`\n${passed} pruebas superadas. Salida en test/out/resultado.pdf`);

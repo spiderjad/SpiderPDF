@@ -1,7 +1,7 @@
 // Pruebas de src/geometry.js.  Ejecutar: npm test
 import assert from 'node:assert/strict';
 import {
-  toDisplay, fromDisplay, rectToDisplay, rectFromDisplay, moveAnnot, annotBounds, imageMatrix,
+  toDisplay, fromDisplay, rectToDisplay, rectFromDisplay, moveAnnot, annotBounds, imageMatrix, rotateMatrix, matrixBounds, transferRect,
 } from '../src/geometry.js';
 
 let passed = 0;
@@ -76,6 +76,37 @@ t('imageMatrix llena exactamente la caja en los cuatro giros', () => {
     const xs = pts.map((p) => p[0]); const ys = pts.map((p) => p[1]);
     near([Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)], [x0, y0, x0 + w, y0 + h], `k=${k}`);
   }
+});
+
+t('sellos: girar una matriz en sentido horario alrededor de su centro y la caja que ocupa', () => {
+  const close = (a, b) => a.every((v, i) => Math.abs(v - b[i]) < 1e-9);
+  const m = imageMatrix(0, 100, 200, 80, 40); // caja 100..180 × 200..240
+  assert.equal(rotateMatrix(m, 0, 140, 220), m);
+  // 90° horario visto en pantalla: el ancho pasa a ser alto, mismo centro.
+  const r = rotateMatrix(m, 90, 140, 220);
+  assert.ok(close(matrixBounds(r), [120, 180, 160, 260]), `${matrixBounds(r)}`);
+  // Horario con el eje y del PDF hacia arriba: el borde inferior de la imagen (su eje x) apunta hacia abajo.
+  assert.ok(Math.abs(r[0]) < 1e-9 && r[1] < 0, `eje x de la imagen tras girar: ${r[0]}, ${r[1]}`);
+  // 360° = igual; 45°: la caja crece.
+  assert.ok(close(rotateMatrix(m, 360, 140, 220), m));
+  const b = matrixBounds(rotateMatrix(m, 45, 140, 220));
+  assert.ok(b[2] - b[0] > 80 && b[3] - b[1] > 40);
+});
+
+t('sellos: el mismo rectángulo en otra página conserva su centro y su tamaño en puntos', () => {
+  const a4 = { width: 595, height: 842, rot0: 0 };
+  const a4apaisado = { width: 842, height: 595, rot0: 0 };
+  const r = [0.4, 0.1, 0.6, 0.2]; // 119 × 84,2 pt
+  const t2 = transferRect(r, a4, a4apaisado);
+  assert.ok(Math.abs((t2[2] - t2[0]) * 842 - 119) < 1e-6 && Math.abs((t2[3] - t2[1]) * 595 - 84.2) < 1e-6);
+  assert.ok(Math.abs((t2[0] + t2[2]) / 2 - 0.5) < 1e-9 && Math.abs((t2[1] + t2[3]) / 2 - 0.15) < 1e-9);
+  const near = (x, y) => x.every((v, i) => Math.abs(v - y[i]) < 1e-9);
+  assert.ok(near(transferRect(r, a4, a4), r));
+  // Cerca del borde: se mete dentro.
+  const edge = transferRect([0.9, 0.9, 1, 1], a4apaisado, a4);
+  assert.ok(edge[2] <= 1 && edge[3] <= 1 && edge[0] >= 0);
+  // Con /Rotate 90 cuentan las medidas sin girar.
+  assert.ok(near(transferRect(r, a4, { width: 842, height: 595, rot0: 1 }), r));
 });
 
 console.log(`\n${passed} pruebas de geometría superadas.`);

@@ -288,9 +288,9 @@ function dataUrlToBlob(url) {
   return new Blob([bytes], { type: m[1] || 'application/octet-stream' });
 }
 
-/** Anotación del estado → la que espera el motor. Las imágenes llegan como src (data URL o Blob). */
+/** Anotación del estado → la que espera el motor. Las imágenes (firmas, sellos) llegan como src (data URL o Blob). */
 async function toEngineAnnot(a) {
-  if (a.type !== 'image' || a.image) return a;
+  if ((a.type !== 'image' && a.type !== 'stamp') || a.image) return a;
   const blob = a.src instanceof Blob ? a.src : dataUrlToBlob(a.src);
   const bmp = await createImageBitmap(blob);
   try {

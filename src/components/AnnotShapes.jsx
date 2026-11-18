@@ -9,7 +9,7 @@ export const NOTE_PT = 20; // tamaño del icono de nota en el PDF (ver pdfium-co
 /** Orden de dibujo, de abajo arriba: la redacción siempre encima de todo. */
 // Firmas y texto nuevo comparten capa (son contenido): entre ellos manda el orden de la lista (traer al frente…).
 // Borrar va debajo de todo: quita contenido del PDF, y lo que añade el usuario puede ir encima.
-export const LAYER = { erase: -1, highlight: 0, ink: 1, note: 2, image: 3, textbox: 3, redact: 9 };
+export const LAYER = { erase: -1, highlight: 0, ink: 1, note: 2, image: 3, textbox: 3, stamp: 4, redact: 9 };
 export const byLayer = (a, b) => (LAYER[a.type] ?? 5) - (LAYER[b.type] ?? 5);
 
 /** Giro total de la página en pantalla (el que trae el PDF + el del usuario). */
@@ -84,6 +84,19 @@ export function AnnotShape({ a, W, H, R, pxPerPt, hitArea = false, svgNotes = fa
     const [iw, ih] = turn % 2 ? [b.h, b.w] : [b.w, b.h];
     return (
       <g {...props} style={style} transform={`translate(${b.x + b.w / 2} ${b.y + b.h / 2}) rotate(${turn * 90})`}>
+        <rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill="transparent" />
+        <image href={a.src} x={-iw / 2} y={-ih / 2} width={iw} height={ih} preserveAspectRatio="none" />
+      </g>
+    );
+  }
+  if (a.type === 'stamp') {
+    // Como la firma, más su giro libre (angle, grados horarios) alrededor del centro.
+    const b = boxPx(a.rect, R, W, H);
+    const turn = (((R - (a.k ?? 0)) % 4) + 4) % 4;
+    const [iw, ih] = turn % 2 ? [b.h, b.w] : [b.w, b.h];
+    return (
+      <g {...props} style={style} data-stamp={a.label ?? ''} data-angle={a.angle ?? 0} data-flat={a.flat ? 'true' : undefined}
+        transform={`translate(${b.x + b.w / 2} ${b.y + b.h / 2}) rotate(${turn * 90 + (a.angle ?? 0)})`}>
         <rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill="transparent" />
         <image href={a.src} x={-iw / 2} y={-ih / 2} width={iw} height={ih} preserveAspectRatio="none" />
       </g>

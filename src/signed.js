@@ -104,14 +104,15 @@ function mdpPolicy(sources) {
 /** Herramientas de Leer que permite la política (ids de AnnotToolbar). */
 export function allowedTools(policy) {
   return new Set(['select',
-    ...(policy.annots ? ['highlight', 'ink', 'note'] : []),
+    ...(policy.annots ? ['highlight', 'ink', 'note', 'stamp'] : []),
     ...(policy.content ? ['signature', 'textbox', 'text', 'erase', 'redact'] : [])]);
 }
 
 const PAGE_ACTIONS = new Set(['rotate', 'delete', 'move', 'add']);
 // Firma gráfica, texto nuevo, borrar y zonas a redactar cambian el contenido de la página; el resto son anotaciones.
+// Un sello es una anotación, salvo «Fijar en la página» (contenido).
 const CONTENT = new Set(['image', 'redact', 'textbox', 'erase']);
-const annotKind = (type) => (CONTENT.has(type) ? 'content' : 'annots');
+const annotKind = (a) => (CONTENT.has(a?.type) || (a?.type === 'stamp' && a.flat) ? 'content' : 'annots');
 
 /** ¿La política permite esta acción del reducer? state: para saber el tipo de una anotación existente. */
 export function allows(policy, a, state) {
@@ -120,10 +121,11 @@ export function allows(policy, a, state) {
   if (a.type === 'setOutline') return policy.pages; // el índice es del documento, como el orden de las páginas
   if (a.type === 'setField') return policy.forms;
   if (a.type === 'setTextEdit' || a.type === 'setOcr') return policy.content; // la capa del OCR es texto de la página
-  if (a.type === 'addAnnot') return policy[annotKind(a.annot.type)];
-  if (a.type === 'updateAnnot' || a.type === 'removeAnnot') {
+  if (a.type === 'addAnnot') return policy[annotKind(a.annot)];
+  if (a.type === 'updateAnnot' || a.type === 'removeAnnot' || a.type === 'copyAnnotTo') {
     const annot = state?.pages.find((p) => p.key === a.key)?.annots.find((x) => x.id === a.id);
-    return !annot || policy[annotKind(annot.type)];
+    if (a.changes?.flat) return policy.content; // fijar un sello en la página es cambiar su contenido
+    return !annot || policy[annotKind(annot)];
   }
   return true; // selección, vista, deshacer…
 }

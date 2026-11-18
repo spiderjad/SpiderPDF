@@ -1,0 +1,44 @@
+/*
+ * Elegir sello (src/components/StampDialog.jsx). Prefijo st-.
+ * La ventana es v-dialog de spider-ui; aquí la cuadrícula de sellos, las muestras de color y las vistas previas.
+ * Los sellos son imágenes con sus propios colores (contenido del PDF), sobre blanco como el papel.
+ */
+
+.st-dialog { width: 560px; }
+.st-section + .st-section { margin-top: 18px; }
+.st-section > .v-label { margin: 0 0 8px; }
+.st-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.st-tile {
+  display: grid;
+  place-items: center;
+  min-height: 64px;
+  padding: 8px;
+  border: 1px solid var(--sp-border);
+  border-radius: var(--sp-radius);
+  background: #fff; /* el papel */
+  cursor: pointer;
+  transition: border-color 150ms ease-out, box-shadow 150ms ease-out;
+}
+.st-tile:hover { border-color: var(--sp-text-primary); }
+.st-tile:focus-visible { outline: 2px solid var(--sp-focus); outline-offset: 2px; }
+.st-tile img { max-width: 100%; max-height: 52px; }
+.st-tile__name { color: #4B5563; font-size: 13px; }
+
+.st-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.st-row--end { justify-content: flex-end; margin-top: 8px; }
+.st-text { flex: 1; min-width: 180px; }
+.st-colors { display: flex; gap: 6px; }
+.st-swatch { width: 22px; height: 22px; padding: 0; border: 0; border-radius: 999px; cursor: pointer; }
+.st-swatch[aria-checked="true"] { box-shadow: 0 0 0 2px var(--sp-bg), 0 0 0 4px var(--sp-text-primary); }
+.st-swatch:focus-visible { outline: 2px solid var(--sp-focus); outline-offset: 3px; }
+.st-check { display: inline-flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 14px; cursor: pointer; }
+.st-check input { margin: 0; accent-color: var(--sp-text-primary); }
+.st-preview { max-height: 56px; max-width: 60%; padding: 4px; border-radius: var(--sp-radius); background: #fff; }
+.st-help { margin: -2px 0 8px; }
+
+@media (max-width: 480px) {
+  .st-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .st-tile { transition: none; }
+}

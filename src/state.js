@@ -9,7 +9,7 @@
 // outline: índice creado en la app ([{ title, key, children }], ver outline.js) o null = el de los PDF.
 // El historial guarda { pages, outline } en cada paso.
 
-import { moveAnnot } from './geometry.js';
+import { moveAnnot, transferRect } from './geometry.js';
 
 let keySeq = 0;
 export const newKey = () => `p${++keySeq}`;
@@ -162,6 +162,20 @@ export function reducer(s, a) {
       const { id: _old, ...rest } = moveAnnot(src, 0.02, 0.02, 0);
       const copy = { ...rest, id: newAnnotId() };
       return editPage(s, a.key, (p) => ({ ...p, annots: [...p.annots, copy] }), { annotSel: { key: a.key, id: copy.id } });
+    }
+
+    case 'copyAnnotTo': {
+      // a: { key, id, keys }: la misma anotación (un sello) en esas páginas, en el mismo sitio y con el mismo tamaño
+      // en puntos. Todas en un solo paso de deshacer.
+      const from = s.pages.find((p) => p.key === a.key);
+      const src = from?.annots.find((x) => x.id === a.id);
+      if (!src?.rect) return s;
+      const targets = new Set([...a.keys].filter((k) => k !== a.key));
+      if (!s.pages.some((p) => targets.has(p.key))) return s;
+      const { id: _old, ...rest } = src;
+      return commit(s, s.pages.map((p) => (targets.has(p.key)
+        ? { ...p, annots: [...p.annots, { ...rest, id: newAnnotId(), rect: transferRect(src.rect, from, p) }] }
+        : p)));
     }
 
     case 'reorderAnnot':

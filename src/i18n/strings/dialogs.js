@@ -3,6 +3,23 @@
 export default {
   es: {
     'dialogs.common.cancel': 'Cancelar',
+    // Sellos
+    'dialogs.stamp.title': 'Sello',
+    'dialogs.stamp.recent': 'Recientes',
+    'dialogs.stamp.presets': 'Predefinidos',
+    'dialogs.stamp.custom': 'Texto propio',
+    'dialogs.stamp.customLabel': 'Texto del sello',
+    'dialogs.stamp.customPlaceholder': 'Por ejemplo, REVISADO',
+    'dialogs.stamp.color': 'Color',
+    'dialogs.stamp.meta': 'Con fecha, hora y tu nombre',
+    'dialogs.stamp.use': 'Usar este sello',
+    'dialogs.stamp.image': 'Imagen',
+    'dialogs.stamp.imageHelp': 'Un logo o el sello de tu empresa escaneado (PNG o JPG).',
+    'dialogs.stamp.chooseImage': 'Elegir imagen…',
+    'dialogs.stamp.removeWhite': 'Quitar el fondo blanco',
+    'dialogs.stamp.useImage': 'Usar esta imagen',
+    'dialogs.stamp.imageFailed': 'No se pudo leer la imagen.',
+    'dialogs.stamp.noName': 'Pon tu nombre en Preferencias para que salga en los sellos.',
     // Dividir
     'dialogs.split.title': 'Dividir PDF',
     'dialogs.split.mode': 'Cómo dividirlo',
@@ -268,6 +285,23 @@ export default {
 
   en: {
     'dialogs.common.cancel': 'Cancel',
+    // Stamps
+    'dialogs.stamp.title': 'Stamp',
+    'dialogs.stamp.recent': 'Recent',
+    'dialogs.stamp.presets': 'Built-in',
+    'dialogs.stamp.custom': 'Your own text',
+    'dialogs.stamp.customLabel': 'Stamp text',
+    'dialogs.stamp.customPlaceholder': 'For example, REVIEWED',
+    'dialogs.stamp.color': 'Color',
+    'dialogs.stamp.meta': 'With date, time and your name',
+    'dialogs.stamp.use': 'Use this stamp',
+    'dialogs.stamp.image': 'Image',
+    'dialogs.stamp.imageHelp': 'A logo or your company’s scanned stamp (PNG or JPG).',
+    'dialogs.stamp.chooseImage': 'Choose image…',
+    'dialogs.stamp.removeWhite': 'Remove white background',
+    'dialogs.stamp.useImage': 'Use this image',
+    'dialogs.stamp.imageFailed': 'Couldn’t read the image.',
+    'dialogs.stamp.noName': 'Add your name in Preferences so it appears on stamps.',
     // Split
     'dialogs.split.title': 'Split PDF',
     'dialogs.split.mode': 'How to split it',
@@ -525,6 +559,23 @@ export default {
 
   ca: {
     'dialogs.common.cancel': 'Cancel·la',
+    // Segells
+    'dialogs.stamp.title': 'Segell',
+    'dialogs.stamp.recent': 'Recents',
+    'dialogs.stamp.presets': 'Predefinits',
+    'dialogs.stamp.custom': 'Text propi',
+    'dialogs.stamp.customLabel': 'Text del segell',
+    'dialogs.stamp.customPlaceholder': 'Per exemple, REVISAT',
+    'dialogs.stamp.color': 'Color',
+    'dialogs.stamp.meta': 'Amb data, hora i el teu nom',
+    'dialogs.stamp.use': 'Fes servir aquest segell',
+    'dialogs.stamp.image': 'Imatge',
+    'dialogs.stamp.imageHelp': 'Un logotip o el segell de la teva empresa escanejat (PNG o JPG).',
+    'dialogs.stamp.chooseImage': 'Tria una imatge…',
+    'dialogs.stamp.removeWhite': 'Treu el fons blanc',
+    'dialogs.stamp.useImage': 'Fes servir aquesta imatge',
+    'dialogs.stamp.imageFailed': 'No s’ha pogut llegir la imatge.',
+    'dialogs.stamp.noName': 'Posa el teu nom a Preferències perquè surti als segells.',
     // Dividir
     'dialogs.split.title': 'Divideix el PDF',
     'dialogs.split.mode': 'Com es divideix',

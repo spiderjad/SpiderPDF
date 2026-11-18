@@ -27,7 +27,7 @@ t('los motivos se explican en una frase', () => {
 t('sin certificación se puede todo', () => {
   const p = editPolicy([{ signed: 1, mdp: 0 }]);
   assert.equal(p.level, 'full');
-  assert.equal(allowedTools(p).size, 8);
+  assert.equal(allowedTools(p).size, 10);
 });
 
 t('DocMDP P=1: nada se puede cambiar (solo Seleccionar para leer, buscar y copiar)', () => {
@@ -47,8 +47,16 @@ t('DocMDP P=2: solo rellenar formularios', () => {
 
 t('DocMDP P=3: formularios y anotaciones; ni páginas, ni texto, ni firma gráfica (es contenido), ni redactar', () => {
   const p = editPolicy([{ mdp: 3 }]);
-  assert.deepEqual([...allowedTools(p)], ['select', 'highlight', 'ink', 'note']);
+  assert.deepEqual([...allowedTools(p)], ['select', 'highlight', 'ink', 'note', 'stamp']);
   assert.equal(allows(p, { type: 'addAnnot', annot: { type: 'ink' } }), true);
+  // Sello: es una anotación; fijarlo en la página (contenido) o borrar contenido, no.
+  assert.equal(allows(p, { type: 'addAnnot', annot: { type: 'stamp' } }), true);
+  assert.equal(allows(p, { type: 'addAnnot', annot: { type: 'stamp', flat: true } }), false);
+  assert.equal(allows(p, { type: 'addAnnot', annot: { type: 'erase' } }), false);
+  const stamped = { pages: [{ key: 'k', annots: [{ id: 's', type: 'stamp' }] }] };
+  assert.equal(allows(p, { type: 'updateAnnot', key: 'k', id: 's', changes: { angle: 15 } }, stamped), true);
+  assert.equal(allows(p, { type: 'updateAnnot', key: 'k', id: 's', changes: { flat: true } }, stamped), false);
+  assert.equal(allows(p, { type: 'copyAnnotTo', key: 'k', id: 's', keys: new Set() }, stamped), true);
   assert.equal(allows(p, { type: 'addAnnot', annot: { type: 'image' } }), false);
   assert.equal(allows(p, { type: 'addAnnot', annot: { type: 'redact' } }), false);
   assert.equal(allows(p, { type: 'addAnnot', annot: { type: 'textbox' } }), false); // el texto nuevo es contenido

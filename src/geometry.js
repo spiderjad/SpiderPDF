@@ -96,3 +96,42 @@ export function imageMatrix(k, x0, y0, w, h) {
     default: return [w, 0, 0, h, x0, y0];
   }
 }
+
+/**
+ * Matriz PDF [a b c d e f] girada deg grados en el sentido de las agujas del reloj (tal como se ve) alrededor del
+ * punto (cx, cy) del espacio de usuario. En el PDF el eje y sube: el giro horario es un ángulo negativo.
+ */
+export function rotateMatrix(m, deg, cx, cy) {
+  if (!deg) return m;
+  const r = (-deg * Math.PI) / 180;
+  const cos = Math.cos(r);
+  const sin = Math.sin(r);
+  const rot = (x, y) => [cos * x - sin * y, sin * x + cos * y];
+  const [a, b, c, d, e, f] = m;
+  const [a2, b2] = rot(a, b);
+  const [c2, d2] = rot(c, d);
+  const [e2, f2] = rot(e - cx, f - cy);
+  return [a2, b2, c2, d2, e2 + cx, f2 + cy];
+}
+
+/** Caja [x0, y0, x1, y1] que ocupa el cuadrado unidad tras la matriz (p. ej. una imagen girada). */
+export function matrixBounds([a, b, c, d, e, f]) {
+  const xs = [e, a + e, c + e, a + c + e];
+  const ys = [f, b + f, d + f, b + d + f];
+  return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+}
+
+/**
+ * El mismo rectángulo en otra página: mismo centro (en fracciones) y mismo tamaño en puntos, sin salirse. Para poner
+ * un sello en varias páginas aunque tengan otro tamaño u orientación. Páginas: { width, height, rot0 } (con su /Rotate).
+ */
+export function transferRect([u0, v0, u1, v1], from, to) {
+  const size = (p) => ((p.rot0 ?? 0) % 2 ? [p.height, p.width] : [p.width, p.height]);
+  const [fw, fh] = size(from);
+  const [tw, th] = size(to);
+  const w = Math.min(1, ((u1 - u0) * fw) / tw);
+  const h = Math.min(1, ((v1 - v0) * fh) / th);
+  const cu = Math.min(1 - w / 2, Math.max(w / 2, (u0 + u1) / 2));
+  const cv = Math.min(1 - h / 2, Math.max(h / 2, (v0 + v1) / 2));
+  return [cu - w / 2, cv - h / 2, cu + w / 2, cv + h / 2];
+}

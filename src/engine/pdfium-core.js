@@ -9,7 +9,7 @@
  * (así se conservan formularios, marcadores y metadatos), la reordena, añade
  * páginas de otros PDFs y escribe encima giros, campos, anotaciones y firmas.
  */
-import { imageMatrix, fromDisplay, rectToDisplay } from '../geometry.js';
+import { imageMatrix, fromDisplay, rectToDisplay, rotateMatrix, matrixBounds } from '../geometry.js';
 import { familyKey, usesPdfFont, wrapLines, missingChars, LINE_HEIGHT } from '../textbox.js';
 import { findMatches, lineRects, hasRealText } from '../textGeom.js';
 import { mapOutline, pruneOutline, flatten } from '../outline.js';
@@ -34,7 +34,7 @@ const FPDF_INCREMENTAL = 1;
 const FLAG_ANNOT = 0x01;
 const OCR_FONT = familyKey('sans', false, false); // fuente de la capa de texto del OCR
 const FLAG_REVERSE_BYTE_ORDER = 0x10;
-const ANNOT = { TEXT: 1, HIGHLIGHT: 9, INK: 15, POPUP: 16, FILEATTACHMENT: 17, SOUND: 18, WIDGET: 20 };
+const ANNOT = { TEXT: 1, HIGHLIGHT: 9, STAMP: 13, INK: 15, POPUP: 16, FILEATTACHMENT: 17, SOUND: 18, WIDGET: 20 };
 // «Quitar información oculta»: notas (su texto no se ve en la página), sus ventanas y adjuntos.
 const HIDDEN_ANNOTS = new Set([ANNOT.TEXT, ANNOT.POPUP, ANNOT.FILEATTACHMENT, ANNOT.SOUND]);
 const OBJ = { TEXT: 1, PATH: 2, IMAGE: 3, SHADING: 4, FORM: 5 };
@@ -445,11 +445,12 @@ export class PdfCore {
       let contentChanged = false;
       for (const a of annots) {
         const bx = bounds(a);
-        // Firmas y texto nuevo son contenido: dentro de una zona no se crean; si la tocan, la redacción
-        // (que va después) les quita lo que cae dentro. El resto de anotaciones que tocan una zona no se crean.
-        const content = a.type === 'image' || a.type === 'textbox';
+        // Firmas, texto nuevo y sellos fijados son contenido: dentro de una zona no se crean; si la tocan, la
+        // redacción (que va después) les quita lo que cae dentro. El resto de anotaciones que tocan una zona no se crean.
+        const content = a.type === 'image' || a.type === 'textbox' || (a.type === 'stamp' && a.flat);
         if (content ? within(bx) : touches(bx)) continue;
         if (a.type === 'image') { this.addImage(entry, page, a, X, Y); contentChanged = true; }
+        else if (a.type === 'stamp') { if (this.addStamp(entry, page, a, X, Y)) contentChanged = true; }
         else if (a.type === 'textbox') {
           if (!a.text?.trim()) continue;
           if (!fonts) throw new Error(tr('engine.textFontsMissing'));
@@ -752,6 +753,57 @@ export class PdfCore {
       const x0 = X(u0); const x1 = X(u1); const y0 = Y(v1); const y1 = Y(v0);
       this.m.FPDFImageObj_SetMatrix(obj, ...imageMatrix(a.k ?? 0, x0, y0, x1 - x0, y1 - y0));
       this.m.FPDFPage_InsertObject(page, obj);
+    } finally {
+      this.m.FPDFBitmap_Destroy(bmp);
+    }
+  }
+
+  /**
+   * Sello: su imagen (RGBA del cliente) en su caja, con el giro de la página al colocarlo (k) y su giro libre (angle,
+   * grados horarios). Normal: anotación /Stamp con esa imagen como apariencia (Acrobat y Edge la muestran igual y se
+   * puede quitar). flat («Fijar en la página»): contenido de la página. → true si cambió el contenido.
+   */
+  addStamp(entry, page, a, X, Y) {
+    const { width, height, pixels } = a.image;
+    const [u0, v0, u1, v1] = a.rect;
+    const x0 = X(u0); const x1 = X(u1); const y0 = Y(v1); const y1 = Y(v0);
+    const m = rotateMatrix(imageMatrix(a.k ?? 0, x0, y0, x1 - x0, y1 - y0), a.angle ?? 0, (x0 + x1) / 2, (y0 + y1) / 2);
+    const bmp = this.bitmapFromRGBA(width, height, pixels);
+    try {
+      const obj = this.m.FPDFPageObj_NewImageObj(entry.handle);
+      if (!this.m.FPDFImageObj_SetBitmap(0, 0, obj, bmp)) {
+        this.m.FPDFPageObj_Destroy(obj);
+        throw new Error(tr('engine.imageInsertFailed'));
+      }
+      this.m.FPDFImageObj_SetMatrix(obj, ...m);
+      if (a.flat) {
+        this.m.FPDFPage_InsertObject(page, obj);
+        return true;
+      }
+      const annot = this.m.FPDFPage_CreateAnnot(page, ANNOT.STAMP);
+      if (!annot) {
+        this.m.FPDFPageObj_Destroy(obj);
+        throw new Error(tr('engine.annotFailed'));
+      }
+      try {
+        const [bx0, by0, bx1, by1] = matrixBounds(m);
+        this.withMem(16, (p) => { this.setFloats(p, [bx0, by1, bx1, by0]); this.m.FPDFAnnot_SetRect(annot, p); });
+        this.m.FPDFAnnot_SetFlags(annot, ANNOT_FLAG_PRINT);
+        for (const [key, value] of [['Contents', a.label], ['T', a.author]]) {
+          if (!value) continue;
+          const w = this.wide(String(value));
+          this.m.FPDFAnnot_SetStringValue(annot, key, w);
+          this.free(w);
+        }
+        // La imagen pasa a ser la apariencia (/AP) del sello; desde aquí la posee la anotación.
+        if (!this.m.FPDFAnnot_AppendObject(annot, obj)) {
+          this.m.FPDFPageObj_Destroy(obj);
+          throw new Error(tr('engine.annotFailed'));
+        }
+      } finally {
+        this.m.FPDFPage_CloseAnnot(annot);
+      }
+      return false;
     } finally {
       this.m.FPDFBitmap_Destroy(bmp);
     }

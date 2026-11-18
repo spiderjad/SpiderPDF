@@ -46,6 +46,9 @@ import TitleBar from './components/TitleBar.jsx';
 import AppIcon from './components/AppIcon.jsx';
 import AnnotToolbar, { TOOLS } from './components/AnnotToolbar.jsx';
 import SignatureDialog from './components/SignatureDialog.jsx';
+import StampDialog from './components/StampDialog.jsx';
+import StampBar from './components/StampBar.jsx';
+import { stampName, placeRect, snapAngle, rememberStamp } from './stamps.js';
 import { displaySize } from './components/PageImage.jsx';
 import { menuModel, findByKey } from './menu.js';
 import OrganizeView from './components/OrganizeView.jsx';
@@ -1230,6 +1233,49 @@ export default function App() {
     }
   }
 
+  // --- Sellos: se elige en el diálogo y se pone con un clic en la página -------------------------
+  // pendingStamp: { name, src, wPt, hPt } el sello elegido, mientras la herramienta «Sello» espera el clic.
+  const [stampOpen, setStampOpen] = useState(false);
+  const [pendingStamp, setPendingStamp] = useState(null);
+  useEffect(() => { if (tool !== 'stamp') setPendingStamp(null); }, [tool]);
+
+  function chooseStamp(def, look) {
+    setStampOpen(false);
+    try { rememberStamp(globalThis.localStorage, def); } catch { /* sin almacenamiento */ }
+    setPendingStamp({ name: stampName(def), src: look.src, wPt: look.wPt, hPt: look.hPt });
+    setTool('stamp');
+  }
+
+  /** Clic en una página con la herramienta «Sello»: el sello elegido, centrado ahí y derecho tal como se ve. */
+  function placeStamp(page, point) {
+    const p = pendingStamp;
+    if (!p) return;
+    const R = pageTurn(page);
+    const d = displaySize(page);
+    const rect = placeRect(point, p, { dispW: d.w, dispH: d.h, R });
+    act({ type: 'addAnnot', key: page.key, annot: { type: 'stamp', rect, k: R, angle: 0, src: p.src, label: p.name, author: prefsRef.current.userName || undefined, flat: false } });
+    setTool('select');
+  }
+
+  /** Sello seleccionado (para su barra). */
+  const selStamp = (() => {
+    const sel = state.annotSel;
+    if (!sel) return null;
+    const page = state.pages.find((p) => p.key === sel.key);
+    const a = page?.annots.find((x) => x.id === sel.id);
+    return a?.type === 'stamp' ? { page, a } : null;
+  })();
+
+  function applyStamp(which) {
+    if (!selStamp) return;
+    const s = stateRef.current;
+    const keys = which === 'all' ? new Set(s.pages.map((p) => p.key)) : new Set(s.selected);
+    const count = [...keys].filter((k) => k !== selStamp.page.key).length;
+    if (!count) return;
+    act({ type: 'copyAnnotTo', key: selStamp.page.key, id: selStamp.a.id, keys });
+    notify(t('reader.stamp.applied', { count }));
+  }
+
   // --- Firma: el modal entrega un PNG transparente; se centra en la página actual --------
   function placeSignature({ src, width, height }) {
     setSigOpen(false);
@@ -1451,10 +1497,22 @@ export default function App() {
           allowed={tools}
           lockedHint={policy.notice}
           tool={tool}
-          onTool={(t) => { if (t === 'signature') setSigOpen(true); else setTool(t); }}
+          onTool={(t) => { if (t === 'signature') setSigOpen(true); else if (t === 'stamp') setStampOpen(true); else setTool(t); }}
           colors={colors}
           onColor={(t, hex) => setColors((c) => ({ ...c, [t]: hex }))}
         >
+          {selStamp && (
+            <StampBar
+              annot={selStamp.a}
+              pages={state.pages.length}
+              selected={state.selected.size}
+              canFlat={policy.content}
+              onRotate={(delta) => act({ type: 'updateAnnot', key: selStamp.page.key, id: selStamp.a.id, changes: { angle: snapAngle((selStamp.a.angle ?? 0) + delta) } })}
+              onFlat={(flat) => act({ type: 'updateAnnot', key: selStamp.page.key, id: selStamp.a.id, changes: { flat } })}
+              onApply={applyStamp}
+              onRemove={() => act({ type: 'removeAnnot', key: selStamp.page.key, id: selStamp.a.id })}
+            />
+          )}
           {selBox && (
             <TextFormatBar
               annot={selBox.a}
@@ -1467,6 +1525,7 @@ export default function App() {
         </AnnotToolbar>
       )}
       {sigOpen && <SignatureDialog onPlace={placeSignature} onClose={() => setSigOpen(false)} />}
+      {stampOpen && <StampDialog user={prefs.userName} onChoose={chooseStamp} onCancel={() => setStampOpen(false)} />}
       {printOpen && <PrintDialog state={state} onCancel={() => setPrintOpen(false)} onPrint={runPrint} />}
       {newOpen && <NewDocumentDialog onCancel={() => setNewOpen(false)} onCreate={createDocument} />}
       {shareOpen && (
@@ -1649,6 +1708,8 @@ export default function App() {
                 onEditBox: (key, id) => setEditingBox({ key, id }),
                 onDoneBox: finishTextBox,
                 onCreateTextBox: createTextBox,
+                stampGhost: pendingStamp,
+                onPlaceStamp: placeStamp,
               }}
               onLink={followLink}
               outlineProps={{
@@ -1691,7 +1752,7 @@ export default function App() {
         )}
       </main>
 
-      <StatusBar state={state} docName={docName} tool={tool} task={showSaving ? task : null} sigGroups={sigGroups} policy={policy} locked={!empty && willBeProtected(state)} />
+      <StatusBar state={state} docName={docName} tool={tool} stampName={pendingStamp?.name} task={showSaving ? task : null} sigGroups={sigGroups} policy={policy} locked={!empty && willBeProtected(state)} />
     </div>
   );
 }
@@ -1811,7 +1872,7 @@ function OpeningCard({ task, onCancel }) {
   );
 }
 
-function StatusBar({ state, docName, tool, task, sigGroups, policy, locked }) {
+function StatusBar({ state, docName, tool, stampName: pending, task, sigGroups, policy, locked }) {
   const t = useT();
   const n = state.pages.length;
   let hint = '';
@@ -1819,6 +1880,7 @@ function StatusBar({ state, docName, tool, task, sigGroups, policy, locked }) {
   if (n && state.mode === 'read') {
     const h = TOOLS.find((x) => x.id === tool)?.hint;
     if (h && tool !== 'select') hint = t(h);
+    if (tool === 'stamp' && pending) hint = t('core.stamp.placeHint', { name: pending });
     pageInfo = t('core.status.pageOf', { n: state.current + 1, total: n });
   } else if (!policy.pages) hint = '';
   else if (state.selected.size > 1) hint = t('core.status.dragSelected', { count: state.selected.size });

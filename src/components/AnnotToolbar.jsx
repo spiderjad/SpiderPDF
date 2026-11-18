@@ -1,4 +1,4 @@
-import { MousePointer2, Highlighter, PenLine, StickyNote, Signature, TextCursorInput, EyeOff, Type, Eraser } from 'lucide-react';
+import { MousePointer2, Highlighter, PenLine, StickyNote, Signature, TextCursorInput, EyeOff, Type, Eraser, Stamp } from 'lucide-react';
 import { useT } from '../i18n/index.js';
 import './AnnotToolbar.css';
 
@@ -9,6 +9,7 @@ export const TOOLS = [
   { id: 'ink', label: 'core.tool.ink', icon: PenLine, hint: 'core.tool.inkHint' },
   { id: 'note', label: 'core.tool.note', icon: StickyNote, hint: 'core.tool.noteHint' },
   { id: 'signature', label: 'core.tool.signature', icon: Signature, hint: 'core.tool.signatureHint' },
+  { id: 'stamp', label: 'core.tool.stamp', icon: Stamp, hint: 'core.tool.stampHint' },
   { id: 'textbox', label: 'core.tool.textbox', icon: Type, hint: 'core.tool.textboxHint' },
   { id: 'text', label: 'core.tool.text', icon: TextCursorInput, hint: 'core.tool.textHint' },
   { id: 'erase', label: 'core.tool.erase', icon: Eraser, hint: 'core.tool.eraseHint' },

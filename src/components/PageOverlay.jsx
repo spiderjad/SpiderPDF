@@ -9,6 +9,7 @@ import { AnnotShape, NOTE_PT, boxPx, pageTurn } from './AnnotShapes.jsx';
 import TextLayer from './TextLayer.jsx';
 import TextBoxes from './TextBoxes.jsx';
 import { caretAt, charIndexAt, wordAt, lineRects } from '../textGeom.js';
+import { snapAngle } from '../stamps.js';
 import { useT } from '../i18n/index.js';
 
 const clamp01 = (n) => Math.min(1, Math.max(0, n));
@@ -26,7 +27,7 @@ const NO_CONFLICTS = { annots: new Set(), texts: new Set() };
 export default function PageOverlay({
   page, cssWidth, tool, color, annotSel, conflicts = NO_CONFLICTS, dispatch,
   textSel, onTextSel, searchHits = [], currentHit = null, scanned = false, canFill = true,
-  editingBox = null, onEditBox, onDoneBox, onCreateTextBox, onLink,
+  editingBox = null, onEditBox, onDoneBox, onCreateTextBox, onLink, stampGhost = null, onPlaceStamp,
 }) {
   const t = useT();
   const R = pageTurn(page);
@@ -52,6 +53,7 @@ export default function PageOverlay({
   // «Borrar»: imágenes del PDF que se pueden quitar con un clic (firmas escaneadas, logos) y la que está bajo el puntero.
   const [images, setImages] = useState([]);
   const [hoverImg, setHoverImg] = useState(-1);
+  const [ghost, setGhost] = useState(null); // «Sello»: dónde caería (fracciones de pantalla), siguiendo al ratón
   useEffect(() => {
     if (tool !== 'erase') return undefined;
     let alive = true;
@@ -98,7 +100,7 @@ export default function PageOverlay({
   }, [page.docId, page.index, page.hasForm]);
 
   const selectedId = annotSel?.key === page.key ? annotSel.id : null;
-  const drawing = tool === 'highlight' || tool === 'ink' || tool === 'note' || tool === 'redact' || tool === 'textbox' || tool === 'erase';
+  const drawing = tool === 'highlight' || tool === 'ink' || tool === 'note' || tool === 'redact' || tool === 'textbox' || tool === 'erase' || tool === 'stamp';
   const editingId = editingBox?.key === page.key ? editingBox.id : null;
   const rectTool = (t) => t === 'highlight' || t === 'redact' || t === 'erase';
 
@@ -148,6 +150,7 @@ export default function PageOverlay({
     if (!drawing) return;
     e.preventDefault();
     e.stopPropagation();
+    if (tool === 'stamp') { onPlaceStamp?.(page, p); setGhost(null); return; } // el sello elegido, centrado en el clic
     // Texto nuevo: un clic fuera del cuadro que se está escribiendo solo termina (no crea otro).
     if (tool === 'textbox' && editingBox) { onDoneBox?.(editingBox.key, editingBox.id); return; }
     if (tool === 'note') {
@@ -172,6 +175,8 @@ export default function PageOverlay({
     try { svgRef.current.setPointerCapture(e.pointerId); } catch { /* puntero ya liberado */ }
     const d = a.rect ? rectToDisplay(a.rect, R) : null;
     drag.current = { mode, corner, start: pt(e), annot: a, rect: d, moved: false };
+    // Sello: escalar y girar alrededor de su centro (en píxeles).
+    if (d) drag.current.center = [(d.x + d.w / 2) * W, (d.y + d.h / 2) * H];
   };
 
   // Cuadro de texto: con «Texto nuevo» un clic lo edita; con Seleccionar se mueve (doble clic, editar).
@@ -190,6 +195,7 @@ export default function PageOverlay({
     const g = drag.current;
     if (!g) {
       if (tool === 'erase') { const i = imageAt(fromDisplay(...pt(e), R)); if (i !== hoverImg) setHoverImg(i); return; }
+      if (tool === 'stamp') { setGhost(pt(e)); return; }
       // Cursor de mano sobre los enlaces y de texto sobre las letras (solo con Seleccionar).
       if (tool === 'select') {
         const onLinkNow = !!linkAt(pt(e));
@@ -222,6 +228,23 @@ export default function PageOverlay({
       g.moved = true;
       const { id, ...changes } = moveAnnot(g.annot, dx, dy, R);
       dispatch({ type: 'updateAnnot', key: page.key, id: g.annot.id, changes, group: true });
+    } else if (g.mode === 'scale' || g.mode === 'rotate') {
+      // Sello: escalar desde su centro (con la proporción) o girarlo (a pasos de 5°; con Mayús, de 1°).
+      const [cx, cy] = g.center;
+      const [sx0, sy0] = [g.start[0] * W - cx, g.start[1] * H - cy];
+      const [sx1, sy1] = [p[0] * W - cx, p[1] * H - cy];
+      g.moved = true;
+      if (g.mode === 'rotate') {
+        const turn = ((Math.atan2(sy1, sx1) - Math.atan2(sy0, sx0)) * 180) / Math.PI;
+        const angle = snapAngle((g.annot.angle ?? 0) + turn, e.shiftKey ? 1 : 5);
+        dispatch({ type: 'updateAnnot', key: page.key, id: g.annot.id, changes: { angle }, group: true });
+      } else {
+        const r = g.rect;
+        const k = Math.max(12 / Math.min(r.w * W, r.h * H), Math.hypot(sx1, sy1) / Math.max(1, Math.hypot(sx0, sy0)));
+        const w = Math.min(1, r.w * k); const h = Math.min(1, r.h * k);
+        const disp = { x: cx / W - w / 2, y: cy / H - h / 2, w, h };
+        dispatch({ type: 'updateAnnot', key: page.key, id: g.annot.id, changes: { rect: rectFromDisplay(disp, R) }, group: true });
+      }
     } else if (g.mode === 'resize') {
       // La esquina opuesta queda fija. Las firmas mantienen su proporción.
       const r = g.rect;
@@ -330,7 +353,7 @@ export default function PageOverlay({
         onPointerMove={onMove}
         onPointerUp={onUp}
         onPointerCancel={onUp}
-        onPointerLeave={() => setHoverImg(-1)}
+        onPointerLeave={() => { setHoverImg(-1); setGhost(null); }}
         onDoubleClick={(e) => {
           // Doble clic: la palabra entera.
           if (tool !== 'select' || !chars) return;
@@ -369,9 +392,10 @@ export default function PageOverlay({
         );
       })}
 
-      {/* 3. Firmas */}
+      {/* 3. Firmas y sellos */}
       <svg width={W} height={H} className="pointer-events-none absolute inset-0">
         {byType('image').map((a) => shape(a))}
+        {byType('stamp').map((a) => shape(a))}
       </svg>
 
       {/* 3b. Texto nuevo (contenido, como las firmas) */}
@@ -474,7 +498,42 @@ export default function PageOverlay({
           return <rect key={`c-${a.id}`} x={b.x - 4} y={b.y - 4} width={b.w + 8} height={b.h + 8} rx={2} fill="none" style={{ stroke: 'var(--danger)' }} strokeWidth={1.5} />;
         })}
 
-        {selBox && (
+        {/* Sello seleccionado: su contorno girado, asas para escalar desde el centro y una para girarlo. */}
+        {selAnnot?.type === 'stamp' && (() => {
+          const cx = selBox.x + selBox.w / 2;
+          const cy = selBox.y + selBox.h / 2;
+          const [hw, hh] = [selBox.w / 2 + 1.5, selBox.h / 2 + 1.5];
+          const can = tool === 'select';
+          return (
+            <g transform={`translate(${cx} ${cy}) rotate(${selAnnot.angle ?? 0})`}>
+              <rect x={-hw} y={-hh} width={2 * hw} height={2 * hh} fill="none" style={{ stroke: 'var(--accent)' }} strokeWidth={1} />
+              {can && [[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([sx, sy]) => (
+                <rect
+                  key={`${sx}${sy}`} x={sx * hw - HANDLE / 2} y={sy * hh - HANDLE / 2} width={HANDLE} height={HANDLE}
+                  fill="#fff" style={{ stroke: 'var(--accent)', pointerEvents: 'auto', cursor: 'nwse-resize' }} strokeWidth={1}
+                  data-handle="scale" onPointerDown={(e) => onAnnotDown(e, selAnnot, 'scale')}
+                />
+              ))}
+              {can && (
+                <g data-handle="rotate" style={{ pointerEvents: 'auto', cursor: 'grab' }} onPointerDown={(e) => onAnnotDown(e, selAnnot, 'rotate')}>
+                  <line x1={0} y1={-hh} x2={0} y2={-hh - 16} style={{ stroke: 'var(--accent)' }} strokeWidth={1} />
+                  <circle cx={0} cy={-hh - 20} r={5} fill="#fff" style={{ stroke: 'var(--accent)' }} strokeWidth={1.25}>
+                    <title>{t('reader.stamp.handleRotate')}</title>
+                  </circle>
+                </g>
+              )}
+            </g>
+          );
+        })()}
+
+        {/* Sello elegido: vista previa siguiendo al ratón. */}
+        {tool === 'stamp' && stampGhost && ghost && (() => {
+          const w = stampGhost.wPt * pxPerPt;
+          const h = stampGhost.hPt * pxPerPt;
+          return <image href={stampGhost.src} x={ghost[0] * W - w / 2} y={ghost[1] * H - h / 2} width={w} height={h} opacity={0.55} />;
+        })()}
+
+        {selBox && selAnnot.type !== 'stamp' && (
           <g>
             <rect x={selBox.x - 1.5} y={selBox.y - 1.5} width={selBox.w + 3} height={selBox.h + 3} fill="none" style={{ stroke: 'var(--accent)' }} strokeWidth={1} />
             {(tool === 'select' || (tool === 'textbox' && selAnnot.type === 'textbox')) && RESIZABLE.has(selAnnot.type) && !(selAnnot.type === 'erase' && selAnnot.image) && CORNERS.map((c) => (

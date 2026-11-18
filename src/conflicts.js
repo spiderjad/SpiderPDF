@@ -30,6 +30,7 @@ export function redactConflicts(page, runs = []) {
   const out = [];
   for (const a of page.annots) {
     if (a.type === 'image' && hit(a.rect)) out.push({ kind: 'image', id: a.id });
+    if (a.type === 'stamp' && hit(a.rect)) out.push({ kind: 'stamp', id: a.id });
     if (a.type === 'textbox' && a.text?.trim() && hit(a.rect)) out.push({ kind: 'textbox', id: a.id });
     if (a.type === 'note' && hit(noteRect(a, page))) out.push({ kind: 'note', id: a.id });
   }
