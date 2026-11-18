@@ -4,7 +4,7 @@ import {
   Trash2, FileOutput, ZoomIn, ZoomOut, MoveHorizontal, Save, LoaderCircle, Search,
   FilePlus, File as FileIcon, ImagePlus, ChevronDown, Share2, FileDown, Download,
 } from 'lucide-react';
-import { WordBadge, ExcelBadge } from './FileBadges.jsx';
+import { WordBadge, ExcelBadge, ImageBadge } from './FileBadges.jsx';
 import { useT } from '../i18n/index.js';
 import { formatAccel } from '../menu.js';
 import './Toolbar.css';
@@ -94,6 +94,7 @@ export default function Toolbar({ state, hasTargets, busy, run, savingLabel, can
           items={[
             { cmd: 'exportWord', label: t('core.export.word'), ext: '.docx', hint: t('core.export.wordHint'), badge: WordBadge },
             { cmd: 'exportExcel', label: t('core.export.excel'), ext: '.xlsx', hint: t('core.export.excelHint'), badge: ExcelBadge },
+            { cmd: 'exportImage', label: t('core.export.image'), ext: '.png .jpg', hint: t('core.export.imageHint'), badge: ImageBadge },
           ]}
         />
         <Ghost onClick={() => run('share')} title={t('core.toolbar.shareTitle')} icon={Share2} disabled={!has || busy} label={t('core.toolbar.share')} />

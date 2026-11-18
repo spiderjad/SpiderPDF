@@ -1,5 +1,6 @@
 // Web Worker: todo el trabajo de PDFium ocurre aquí para no congelar la interfaz.
 import { init } from '@embedpdf/pdfium';
+import { setPngDpi, setJpegDpi } from '../imageExport.js';
 import wasmUrl from '@embedpdf/pdfium/pdfium.wasm?url';
 import { PdfCore } from './pdfium-core.js';
 import { createSubsetter } from './subset.js';
@@ -117,6 +118,18 @@ self.onmessage = async ({ data: { id, op, args } }) => {
         const r = core.render(args.docId, args.index, args.scale, args.rot, { hideWm: !!args.hideWm });
         result = await createImageBitmap(new ImageData(r.pixels, r.width, r.height));
         transfer = [result];
+        break;
+      }
+      case 'renderImage': {
+        // Exportar como imagen y «Copiar como imagen»: PNG o JPG a la escala pedida, con su resolución dentro.
+        const r = core.render(args.docId, args.index, args.scale, args.rot ?? 0, { hideWm: !!args.hideWm });
+        const canvas = new OffscreenCanvas(r.width, r.height);
+        canvas.getContext('2d').putImageData(new ImageData(r.pixels, r.width, r.height), 0, 0);
+        const jpeg = args.format === 'jpeg';
+        const blob = await canvas.convertToBlob(jpeg ? { type: 'image/jpeg', quality: args.quality ?? 0.9 } : { type: 'image/png' });
+        const raw = new Uint8Array(await blob.arrayBuffer());
+        result = jpeg ? setJpegDpi(raw, args.dpi) : setPngDpi(raw, args.dpi);
+        transfer = [result.buffer];
         break;
       }
       case 'renderJpeg': {

@@ -16,7 +16,7 @@ test('factura y albarán: vista previa, opciones, libro con números y fechas re
   // Desde el botón «Exportar» de la barra: Word arriba y Excel debajo.
   await win.locator('header').getByRole('button', { name: 'Exportar' }).click();
   const menu = win.getByRole('menu', { name: 'Exportar' });
-  await expect(menu.getByRole('menuitem')).toHaveText([/Documento de Word\s*\.docx/, /Libro de Excel\s*\.xlsx/]);
+  await expect(menu.getByRole('menuitem')).toHaveText([/Documento de Word\s*\.docx/, /Libro de Excel\s*\.xlsx/, /Imágenes PNG o JPG\s*\.png \.jpg/]);
   await menu.getByRole('menuitem', { name: /Libro de Excel/ }).click();
   const dlg = win.getByRole('dialog', { name: 'Exportar a Excel' });
   const list = dlg.getByRole('list', { name: 'Tablas encontradas' });

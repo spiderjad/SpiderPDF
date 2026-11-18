@@ -8,35 +8,11 @@ import { FAMILIES } from '../textbox.js';
 import { imageStamp } from '../stampDraw.js';
 import PageImage, { displaySize } from './PageImage.jsx';
 import WatermarkLayer from './WatermarkLayer.jsx';
+import Choice from './Choice.jsx';
 import { useT, formatNumber } from '../i18n/index.js';
 import './WatermarkDialog.css';
 
 const PREVIEW_W = 300; // ancho de la vista previa, en px
-
-/** Grupo de opciones con aspecto de control segmentado (radio: flechas para cambiar, como los nativos). */
-function Choice({ label, value, options, onChange, disabled = false }) {
-  const keys = options.map((o) => o[0]);
-  const move = (e) => {
-    const d = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key];
-    if (!d) return;
-    e.preventDefault();
-    const next = keys[(keys.indexOf(value) + d + keys.length) % keys.length];
-    onChange(next);
-    e.currentTarget.parentElement.querySelector(`[data-value="${next}"]`)?.focus();
-  };
-  return (
-    <div className="v-segmented wm-seg" role="radiogroup" aria-label={label}>
-      {options.map(([id, text]) => (
-        <button
-          key={id} type="button" role="radio" aria-checked={value === id} data-value={id} tabIndex={value === id ? 0 : -1}
-          className="v-segmented__item" disabled={disabled} onClick={() => onChange(id)} onKeyDown={move}
-        >
-          {text}
-        </button>
-      ))}
-    </div>
-  );
-}
 
 /**
  * Editar → Marca de agua…: texto (Borrador, Copia, Confidencial o libre) o imagen; fuente, tamaño, color, opacidad,
@@ -44,7 +20,7 @@ function Choice({ label, value, options, onChange, disabled = false }) {
  * Si el documento ya tiene marcas de agua de SpiderPDF (o pendientes), lo dice y permite quitarlas.
  *   pages, current (índice), selected (Set de claves), existing (Set de claves con marcas de agua guardadas, o null
  *   mientras se buscan), onApply({ keys, watermark }), onRemove(), onCancel.
- * spider-ui: v-dialog (<dialog> modal nativo), v-field, v-input, v-segmented, v-banner, v-btn-*. Disposición en
+ * spider-ui: v-dialog (<dialog> modal nativo), v-field, v-input, v-segmented (Choice), v-banner, v-btn-*. Disposición en
  * WatermarkDialog.css (prefijo wm-).
  */
 export default function WatermarkDialog({ pages, current = 0, selected = new Set(), existing = null, onApply, onRemove, onCancel }) {
@@ -93,7 +69,8 @@ export default function WatermarkDialog({ pages, current = 0, selected = new Set
   const pending = pages.filter((p) => p.watermark).length;
   const saved = existing?.size ?? 0;
   const replaces = keys.some((k) => existing?.has(k) || pages.find((p) => p.key === k)?.watermark);
-  const ready = wmReady(wm) && !targets.error;
+  // Hasta saber qué marcas de agua trae ya el PDF no se aplica (si no, la nueva no las sustituiría).
+  const ready = wmReady(wm) && !targets.error && existing != null;
 
   // Vista previa: la primera página a la que se aplica (o la actual), sin las marcas de agua que se sustituyen.
   const previewPage = useMemo(() => {

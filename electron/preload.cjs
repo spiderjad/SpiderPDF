@@ -45,6 +45,9 @@ contextBridge.exposeInMainWorld('desktop', {
   // Dividir: qué destinos existen ya y «Mostrar en la carpeta».
   filesExist: (paths) => ipcRenderer.invoke('files:exist', paths),
   revealFile: (path) => ipcRenderer.invoke('file:reveal', String(path)),
+  // Exportar como imagen (un archivo por página) y «Copiar como imagen» (PNG al portapapeles).
+  saveImage: (o) => ipcRenderer.invoke('image:save', o),
+  copyImage: (bytes) => ipcRenderer.invoke('clipboard:image', bytes),
   // Actualizaciones (GitHub): estado, buscar, reiniciar para instalar y avisos de cambio de estado.
   updateState: () => ipcRenderer.invoke('update:state'),
   updateCheck: (o) => ipcRenderer.invoke('update:check', { auto: !!o?.auto }),

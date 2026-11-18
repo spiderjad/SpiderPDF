@@ -183,6 +183,7 @@ export default function PageSidebar({ pages, current, onGo, onMove, outlineProps
               key={page.key}
               id={`thumb-${page.key}`}
               data-row={i}
+              data-page-key={page.key}
               role="option"
               aria-selected={active}
               aria-label={`${t('reader.sidebar.pageN', { n: i + 1 })}${m.redact ? t('reader.sidebar.withRedactions') : ''}${m.other ? t('reader.sidebar.withChanges') : ''}`}

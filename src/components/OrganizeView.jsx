@@ -180,6 +180,7 @@ export default function OrganizeView({ state, dispatch, onDropFiles, onOpenPage,
                     <div
                       className="og-page"
                       data-tile
+                      data-page-key={page.key}
                       tabIndex={0}
                       aria-label={t('core.organize.pageN', { n: i + 1 })}
                       onKeyDown={(e) => onTileKey(e, i, page)}

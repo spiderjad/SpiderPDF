@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain, Menu, protocol, nativeTheme, shell, clipboard, screen } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, Menu, protocol, nativeTheme, shell, clipboard, screen, nativeImage, ClipboardItem } = require('electron');
 const { ShareMenu } = require('electron'); // solo existe en macOS (menú Compartir del sistema)
 const path = require('node:path');
 const fs = require('node:fs/promises');
@@ -379,6 +379,7 @@ ipcMain.on('app:setTheme', (_e, theme) => {
 i18n.onChange(() => buildMenu());
 
 const isPdfPath = (p) => typeof p === 'string' && path.isAbsolute(p) && /\.pdf$/i.test(p);
+const isImagePath = (p) => typeof p === 'string' && path.isAbsolute(p) && /\.(png|jpe?g)$/i.test(p);
 
 ipcMain.handle('recents:list', () => recentList);
 // La interfaz avisa de cada PDF abierto o guardado con ruta.
@@ -562,9 +563,10 @@ ipcMain.handle('files:pending', async (e) => {
   return readPdfs(paths);
 });
 
-// Dividir: ¿cuáles de estos archivos existen ya? (para preguntar antes de reemplazarlos). Solo rutas de PDF.
+// Dividir y Exportar como imagen: ¿cuáles de estos archivos existen ya? (para preguntar antes de reemplazarlos).
+// Solo rutas de PDF o de imagen.
 ipcMain.handle('files:exist', async (_e, paths) => {
-  const list = Array.isArray(paths) ? paths.filter(isPdfPath).slice(0, 5000) : [];
+  const list = Array.isArray(paths) ? paths.filter((p) => isPdfPath(p) || isImagePath(p)).slice(0, 5000) : [];
   const out = [];
   for (const p of list) if (await fs.access(p).then(() => true, () => false)) out.push(p);
   return out;
@@ -724,6 +726,24 @@ ipcMain.handle('file:save', async (e, { bytes, path: target, suggestedName }) =>
   await writeAtomic(filePath, Buffer.from(bytes), { onRetry: (err, i) => e2eLog('guardar: reintento', i, err.code) });
   written.add(path.resolve(filePath));
   return { path: filePath, name: path.basename(filePath) };
+});
+// Exportar como imagen: cada página en su archivo (ruta absoluta .png o .jpg en una carpeta que existe).
+ipcMain.handle('image:save', async (e, { bytes, path: target } = {}) => {
+  if (!isImagePath(target)) throw new Error(T('ipc.expectedImagePath'));
+  if (!(bytes instanceof Uint8Array) && !(bytes instanceof ArrayBuffer)) throw new Error(T('ipc.expectedFile'));
+  await writeAtomic(target, Buffer.from(bytes), { onRetry: (err, i) => e2eLog('imagen: reintento', i, err.code) });
+  written.add(path.resolve(target));
+  return { path: target, name: path.basename(target) };
+});
+// «Copiar como imagen»: una página (PNG) al portapapeles del sistema. Electron 44 cambió la API del portapapeles
+// (asíncrona, con ClipboardItem, como la web; ya no hay writeImage): Windows recibe la imagen como mapa de bits y PNG.
+ipcMain.handle('clipboard:image', async (_e, bytes) => {
+  if (!(bytes instanceof Uint8Array) && !(bytes instanceof ArrayBuffer)) throw new Error(T('ipc.expectedFile'));
+  const buf = Buffer.from(bytes);
+  if (nativeImage.createFromBuffer(buf).isEmpty()) return { ok: false };
+  if (typeof clipboard.writeImage === 'function') clipboard.writeImage(nativeImage.createFromBuffer(buf));
+  else await clipboard.write([new ClipboardItem({ 'image/png': new Blob([buf], { type: 'image/png' }) })]);
+  return { ok: true };
 });
 // «Mostrar en la carpeta» tras Dividir. En e2e (sin empaquetar), globalThis.__spiderPdfRevealHook(path).
 ipcMain.handle('file:reveal', async (_e, filePath) => {

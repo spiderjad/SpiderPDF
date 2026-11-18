@@ -21,14 +21,6 @@
 
 .wm-presets { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
 
-/* Grupos de opciones: v-segmented con semántica de radio (seleccionado = aria-checked). */
-.wm-seg { flex-wrap: wrap; }
-.wm-dialog .wm-seg .v-segmented__item[aria-checked="true"] {
-  color: var(--sp-text-primary);
-  background: var(--sp-bg);
-  border-color: var(--sp-border);
-  box-shadow: var(--sp-shadow);
-}
 
 .wm-colors { display: flex; gap: 6px; height: 36px; align-items: center; }
 .wm-swatch { width: 22px; height: 22px; padding: 0; border: 0; border-radius: 999px; cursor: pointer; }

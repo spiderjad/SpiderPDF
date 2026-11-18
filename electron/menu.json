@@ -23,6 +23,7 @@
       { "label": { "es": "Reducir tamaño…", "en": "Reduce size…", "ca": "Redueix la mida…" }, "cmd": "reduce" },
       { "label": { "es": "Exportar a Word…", "en": "Export to Word…", "ca": "Exporta a Word…" }, "cmd": "exportWord" },
       { "label": { "es": "Exportar a Excel…", "en": "Export to Excel…", "ca": "Exporta a Excel…" }, "cmd": "exportExcel" },
+      { "label": { "es": "Exportar como imagen…", "en": "Export as image…", "ca": "Exporta com a imatge…" }, "cmd": "exportImage" },
       "-",
       { "label": { "es": "Cerrar pestaña", "en": "Close tab", "ca": "Tanca la pestanya" }, "cmd": "closeTab", "accel": "CmdOrCtrl+W" },
       { "label": { "es": "Salir", "en": "Exit", "ca": "Surt" }, "role": "quit", "mac": {"label": { "es": "Cerrar ventana", "en": "Close window", "ca": "Tanca la finestra" }, "role": "close", "accel": "Cmd+Shift+W" } }
@@ -37,6 +38,7 @@
       { "label": { "es": "Cortar", "en": "Cut", "ca": "Retalla" }, "role": "cut", "accel": "Cmd+X", "macOnly": true },
       { "label": { "es": "Copiar", "en": "Copy", "ca": "Copia" }, "cmd": "copy", "accel": "CmdOrCtrl+C" },
       { "label": { "es": "Pegar", "en": "Paste", "ca": "Enganxa" }, "role": "paste", "accel": "Cmd+V", "macOnly": true },
+      { "label": { "es": "Copiar la página como imagen", "en": "Copy page as image", "ca": "Copia la pàgina com a imatge" }, "cmd": "copyImage" },
       { "label": { "es": "Buscar…", "en": "Find…", "ca": "Cerca…" }, "cmd": "find", "accel": "CmdOrCtrl+F" },
       { "label": { "es": "Duplicar", "en": "Duplicate", "ca": "Duplica" }, "cmd": "duplicate", "accel": "CmdOrCtrl+D" },
       "-",

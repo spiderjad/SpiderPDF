@@ -105,6 +105,9 @@ export const pdf = {
    * gray: en escala de grises. → Uint8Array
    */
   renderJpeg: (docId, index, scale, rot = 0, gray = false) => call('renderJpeg', { docId, index, scale, rot, gray }),
+  /** Página → PNG o JPG (Uint8Array) a la escala pedida, con la resolución (dpi) escrita dentro del archivo. */
+  renderImage: (docId, index, { scale, rot = 0, format = 'png', quality = 0.9, dpi = 150, hideWm = false }) =>
+    call('renderImage', { docId, index, scale, rot, format, quality, dpi, hideWm }),
 
   /** Letras de text que no tiene la fuente del texto objIndex de la página. → { missing: [letras] } */
   checkGlyphs: (docId, index, objIndex, text) => call('checkGlyphs', { docId, index, objIndex, text }),

@@ -747,6 +747,69 @@ días) desde las Releases de GitHub (`build.publish`: proveedor `github`, `spide
 - Límites: la primera versión con actualizaciones se instala a mano; sin firma de código, lo protege HTTPS + SHA-512 de
   la misma release (la cuenta de GitHub con doble factor); macOS sin actualizaciones hasta tener Developer ID.
 
+**Guardar una copia y Borrar (hecho, pendiente del visto bueno):**
+- «Descargar» en la cabecera y Archivo → «Guardar una copia…» (`cmd: saveCopy`): escribe el documento tal como está en
+  otro archivo («<nombre> (copia).pdf», `planSave({ copy: true })`); el original no se toca y la pestaña sigue con él (y
+  con sus cambios sin guardar). Elegir el propio original da error. E2E `test/e2e/copia.spec.mjs`.
+- Herramienta «Borrar» en Leer: clic sobre una imagen del PDF (firma escaneada, logo; `imageObjects`: de primer nivel,
+  ni diminutas ni de página entera) la quita (`{ type: 'erase', image: true, rect }` → `removeImages`); arrastrar = zona
+  en blanco (`redact` con relleno blanco). Es contenido (`signed.js`). E2E `test/e2e/borrar.spec.mjs`.
+
+**Sellos (hecho, pendiente del visto bueno):** herramienta «Sello» en Leer (`StampDialog.jsx`, `StampBar.jsx`).
+- Predefinidos (Recibido, Pagado, Aprobado, Contabilizado, Rechazado, Copia; color por tipo) con fecha y hora y el
+  nombre de Preferencias; texto propio con color; imagen (logo o sello escaneado, sin el fondo blanco). Se dibujan como
+  sello de goma en un canvas (`src/stampDraw.js`, 4 px por punto). Recientes (6) en `spiderpdf:sellos`.
+- Clic para colocar (`placeRect`, derecho tal como se ve); mover, escalar (asa de esquina, con proporción) y girar (asa
+  redonda, de 5 en 5°, Mayús = 1°; botones de ±15°). «Aplicar a…» todas o las seleccionadas (`copyAnnotTo`: mismo
+  sitio y tamaño en puntos, un paso de deshacer).
+- Al guardar: anotación /Stamp con la imagen como apariencia (`FPDFAnnot_AppendObject`; Contents = nombre, T = autor);
+  «Fijar en la página» (`flat`) = contenido. Lógica pura en `src/stamps.js` (`test/stamps.test.js`), motor en
+  `engine.test.js`, E2E `test/e2e/sellos.spec.mjs`.
+
+**Tema claro u oscuro (hecho, pendiente del visto bueno):** Preferencias → «Tema» (`prefs.theme`: `auto`, `light`,
+`dark`). `src/theme.js` pone `data-theme` en `<html>` (antes de pintar, en `main.jsx`) y avisa al proceso principal
+(`app:setTheme` → `nativeTheme.themeSource`: barra de título de Windows y diálogos nativos). E2E en `preferencias.spec.mjs`.
+
+**Marca de agua (hecho, pendiente del visto bueno):** Editar → «Marca de agua…» (`WatermarkDialog.jsx`, prefijo `wm-`).
+- Texto (Borrador, Copia, Confidencial o libre; Inter, Noto Serif o JetBrains Mono, negrita, tamaño, color) o imagen
+  (ancho en % de la página, sin el fondo blanco); opacidad; giro (diagonal de la página por defecto, horizontal,
+  vertical u otro); centrada o en mosaico; delante o detrás del contenido; todas, intervalo o seleccionadas. Vista
+  previa en vivo de la primera página afectada. Recuerda lo último (sin la imagen) en `spiderpdf:marca-agua`.
+- Estado: `page.watermark` (una por página; aplicar otra la sustituye) y `page.stripWm` (quitar al guardar las de
+  SpiderPDF que ya trae el PDF). Acciones `setWatermark` y `removeWatermarks` (un paso de deshacer). Es contenido
+  (`signed.js`). Lógica pura en `src/watermark.js` (`test/watermark.test.js`): `wmPlacements` (centro o mosaico, igual
+  en pantalla y en el motor), `wmTargets`, `normalizeWm`.
+- Motor (`addWatermark`, el último paso de `compose`, después de redactar): el texto se escribe como **trazos**
+  (`FPDFFont_GetGlyphPath` con la fuente incluida cargada en un documento temporal: no se incrusta ninguna fuente y no
+  se selecciona, busca ni exporta como texto en ningún visor); la imagen con su transparencia y la opacidad en el alfa.
+  Opacidad con `FPDFPageObj_SetFillColor` (alfa → /ca). Detrás = `FPDFPage_InsertObjectAtIndex(0)` (comprobado: sigue
+  detrás tras guardar). Cada objeto lleva las marcas de contenido `Artifact` y `SpiderPDFWatermark` (`WM_MARK`):
+  `watermarkPages`, `removeWatermarks`, `render(…, { hideWm })` (las oculta con `FPDFPageObj_SetIsActive` sin cambiar el
+  PDF) y Borrar, Exportar a Word/Excel y el OCR no las toman por contenido. Pruebas en `engine.test.js` (delante/detrás,
+  opacidad, mosaico, giros 0-270, imagen, quitar, con redacción).
+- Pantalla: `WatermarkLayer.jsx` (SVG; detrás se simula con `mix-blend-mode: multiply`) en Leer, miniaturas e
+  imprimir. E2E `test/e2e/marca-agua.spec.mjs`.
+- Límites: una marca de agua por página; las de otros programas no se reconocen (solo las de SpiderPDF); detrás no se
+  ve en páginas escaneadas (la imagen la tapa; el diálogo lo dice).
+
+**Exportar como imagen y Copiar como imagen (hecho, pendiente del visto bueno):**
+- Archivo → «Exportar como imagen…» y «Exportar ▾» → «Imágenes PNG o JPG» (`ImageExportDialog.jsx`, prefijo `ie-`;
+  necesita `policy.copy`): PNG o JPG (calidad 50-100 %), 72, 150, 300 ppp u otra (36-600), todas, intervalo o
+  seleccionadas, carpeta (la de salida o la del PDF) y patrón «{documento}_p{n}» (también valen {document}, {name}; {n}
+  = número de página en el documento). Avisa de los que ya existen («Exportar y reemplazar»). Recuerda en `spiderpdf:imagen`.
+- `renderSources` (App, compartido con Imprimir): sin cambios se renderiza del PDF; con cambios (`pageEdited`), se
+  compone antes. Worker `renderImage` (OffscreenCanvas → PNG/JPG) con la resolución escrita dentro (`setPngDpi`: pHYs;
+  `setJpegDpi`: JFIF). Más de 40 Mpx por página → se baja la resolución (`pixelSize`). IPC `image:save` (solo rutas
+  .png/.jpg) y `files:exist` acepta imágenes. Lógica pura en `src/imageExport.js` (`test/imageexport.test.js`).
+- Clic derecho sobre una página (Organizar, Leer, panel; o tecla de menú / Mayús+F10 con la página enfocada; las
+  páginas llevan `data-page-key`) → `PageMenu.jsx` «Copiar como imagen»; también Editar → «Copiar la página como
+  imagen». PNG a 150 ppp por IPC `clipboard:image`. **Electron 44 cambió el portapapeles del proceso principal**: solo
+  `read/write/readText/writeText/has/clear` (asíncronos, con `ClipboardItem`); ya no hay `writeImage`, `readImage` ni
+  `writeBuffer`. Windows recibe mapa de bits y PNG (la e2e lo lee con PowerShell). Ojo: «Copiar archivo» de Compartir
+  en macOS (`share.cjs`, `writeBuffer`) ya no funciona con Electron 44: arreglarlo cuando haya un Mac.
+- `DESKTOP_API` = 13 (`setTheme`, `saveImage`, `copyImage`; si faltan, se usa `savePdf` y el portapapeles del navegador).
+  E2E `test/e2e/imagen.spec.mjs`.
+
 ## Hoja de ruta
 4. Hecho: OCR, Compartir, Contraseñas y Reducir tamaño (ver arriba). Falta que Diego pruebe las contraseñas en Edge
    y Acrobat con `test/out/contrasenas/` y que los reducidos se ven bien.

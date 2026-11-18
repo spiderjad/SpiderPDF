@@ -115,7 +115,7 @@ export default function ReaderView({ state, dispatch, ref, tool, colors, conflic
           {state.pages.map((page, i) => {
             const cssWidth = Math.round(displaySize(page).w * PT_TO_PX * state.zoom);
             return (
-              <div key={page.key} data-i={i} ref={(el) => { pageEls.current[i] = el; }} className="relative scroll-mt-6">
+              <div key={page.key} data-i={i} data-page-key={page.key} ref={(el) => { pageEls.current[i] = el; }} className="relative scroll-mt-6">
                 <PageImage page={page} cssWidth={cssWidth} rootRef={scrollRef} />
                 <ErrorBoundary name="capa de la página" fallback="silent" resetKey={page}>
                 <PageOverlay

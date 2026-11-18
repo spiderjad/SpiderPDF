@@ -115,6 +115,19 @@ const web = {
   async restoreSession() { return null; },
   // Dividir en el navegador: cada archivo se descarga (no hay carpetas).
   async filesExist() { return []; },
+  // Exportar como imagen en el navegador: cada imagen se descarga con su nombre.
+  async saveImage({ bytes, path: target }) {
+    const name = String(target).split(/[\\/]/).pop();
+    const url = URL.createObjectURL(new Blob([bytes], { type: /\.png$/i.test(name) ? 'image/png' : 'image/jpeg' }));
+    Object.assign(document.createElement('a'), { href: url, download: name }).click();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    return { path: null, name };
+  },
+  // «Copiar como imagen» en el navegador: con la API del portapapeles (solo PNG).
+  async copyImage(bytes) {
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': new Blob([bytes], { type: 'image/png' }) })]);
+    return { ok: true };
+  },
   async revealFile() { return { ok: false }; },
   // Actualizaciones: solo en la app instalada para Windows.
   async updateState() { return { status: 'unsupported' }; },

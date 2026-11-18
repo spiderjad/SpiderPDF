@@ -1,0 +1,36 @@
+/*
+ * Exportar como imagen (src/components/ImageExportDialog.jsx). Prefijo ie-.
+ * La ventana es v-dialog de spider-ui; aquí solo la disposición. spider-ui se carga después que este archivo
+ * (main.jsx): lo que cambia medidas de sus clases va con .ie-dialog delante para pesar más.
+ */
+
+.v-dialog.ie-dialog { width: 600px; }
+.ie-body { display: grid; gap: 14px; }
+.ie-body .v-field { margin: 0; }
+
+.ie-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ie-row--nowrap { flex-wrap: nowrap; }
+.ie-row--fields { gap: 24px; align-items: flex-start; }
+.ie-grow { flex: 1; min-width: 200px; }
+.ie-unit { color: var(--sp-text-secondary); font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ie-dialog .ie-num { width: 72px; flex: none; height: 30px; text-align: right; }
+.ie-range { flex: 1; min-width: 140px; accent-color: var(--sp-text-primary); }
+.ie-range:focus-visible { outline: 2px solid var(--sp-focus); outline-offset: 2px; }
+.ie-dialog .ie-range-text { width: 160px; flex: none; height: 30px; }
+.ie-help { margin: -8px 0 0; }
+.ie-path { flex: 1; min-width: 0; text-overflow: ellipsis; }
+
+.ie-pages { display: grid; gap: 8px; border: 0; padding: 0; margin: 0; min-width: 0; }
+.ie-check { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; }
+.ie-check[aria-disabled="true"] { color: var(--sp-text-tertiary); cursor: default; }
+.ie-check input { margin: 0; accent-color: var(--sp-text-primary); }
+.ie-check input:focus-visible { outline: 2px solid var(--sp-focus); outline-offset: 2px; }
+
+.ie-vars code { font-family: var(--sp-font-mono); font-size: 12px; color: var(--sp-text-primary); }
+.ie-preview__head { margin: 0 0 6px; font-size: 14px; font-weight: 500; }
+.ie-files { display: grid; gap: 4px; margin: 0; padding: 8px 10px; list-style: none; border: 1px solid var(--sp-border); border-radius: var(--sp-radius); }
+.ie-files li { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 13px; }
+.ie-file { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ie-more { margin: 6px 0 0; font-size: 12px; color: var(--sp-text-secondary); }
+.ie-notices { display: grid; gap: 6px; }
+.ie-notices:empty { display: none; }

@@ -49,6 +49,9 @@ import AnnotToolbar, { TOOLS } from './components/AnnotToolbar.jsx';
 import SignatureDialog from './components/SignatureDialog.jsx';
 import StampDialog from './components/StampDialog.jsx';
 import WatermarkDialog from './components/WatermarkDialog.jsx';
+import ImageExportDialog from './components/ImageExportDialog.jsx';
+import PageMenu from './components/PageMenu.jsx';
+import { pixelSize, COPY_DPI } from './imageExport.js';
 import StampBar from './components/StampBar.jsx';
 import { stampName, placeRect, snapAngle, rememberStamp } from './stamps.js';
 import { displaySize } from './components/PageImage.jsx';
@@ -62,7 +65,11 @@ import { t, useT, setLang, resolveLang, getLang } from './i18n/index.js';
 
 /** Acciones que chocan con una tarea en curso (abrir, guardar…): se ignoran mientras dure. */
 // Cambiar, cerrar o mover pestañas también: la tarea es de la pestaña en la que empezó.
-const BLOCKED_WHILE_BUSY = new Set(['saveCopy', 'exportExcel', 'exportWord', 'reduce', 'share', 'protect', 'unprotect', 'unlock', 'new', 'ocr', 'open', 'openRecent', 'print', 'add', 'insertBlank', 'insertImage', 'save', 'saveAs', 'extract', 'split', 'delete', 'rotateLeft', 'rotateRight', 'undo', 'redo', 'selectAll', 'newTab', 'closeTab', 'nextTab', 'prevTab', 'detachTab']);
+// Página con algún cambio que se ve (para imprimir, exportar o copiar como imagen hay que componerla antes).
+const pageEdited = (p) => p.docId == null || p.annots.length > 0 || Object.keys(p.fields ?? {}).length > 0
+  || Object.keys(p.textEdits ?? {}).length > 0 || !!p.watermark || !!p.stripWm;
+
+const BLOCKED_WHILE_BUSY = new Set(['saveCopy', 'exportExcel', 'exportWord', 'exportImage', 'copyImage', 'reduce', 'share', 'protect', 'unprotect', 'unlock', 'new', 'ocr', 'open', 'openRecent', 'print', 'add', 'insertBlank', 'insertImage', 'save', 'saveAs', 'extract', 'split', 'delete', 'rotateLeft', 'rotateRight', 'undo', 'redo', 'selectAll', 'newTab', 'closeTab', 'nextTab', 'prevTab', 'detachTab']);
 
 const ZOOM_STEPS = [0.25, 0.5, 0.67, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4];
 /** ¿El foco está en un campo de texto (input, textarea o editable)? */
@@ -925,20 +932,12 @@ export default function App() {
     const paper = PAPERS[o.paper];
     setBusy(true);
     setTask({ kind: 'print', done: 0, total: list.length });
-    let tmpDoc = null;
+    let prepared = null;
     let job = null;
     const off = desktop.onPrintProgress?.((p) => setTask((t) => (t ? { ...t, phase: 'send', done: p.done, total: p.total } : t)));
     try {
-      const edited = list.some((p) => p.docId == null || p.annots.length || Object.keys(p.fields ?? {}).length || Object.keys(p.textEdits ?? {}).length || p.watermark || p.stripWm);
-      let sources; // [{ docId, index, rot, w, h }] página a renderizar y su tamaño en pantalla
-      if (edited) {
-        const { bytes } = await pdf.compose(list);
-        const opened = await pdf.open(bytes, '', { docIds: stateRef.current.sources.map((x) => x.docId) });
-        tmpDoc = opened.docId;
-        sources = opened.pages.map((p, index) => ({ docId: tmpDoc, index, rot: 0, w: p.width, h: p.height }));
-      } else {
-        sources = list.map((p) => { const d = displaySize(p); return { docId: p.docId, index: p.index, rot: p.rot, w: d.w, h: d.h }; });
-      }
+      prepared = await renderSources(list);
+      const { sources } = prepared;
       job = await desktop.printBegin({
         title: stateRef.current.file?.name ?? 'Documento', paper: { w: paper.w, h: paper.h, size: paper.electron },
         deviceName: o.deviceName, copies: o.copies, color: o.color, duplex: o.duplex, system: o.system, batch: PRINT_BATCH,
@@ -958,11 +957,112 @@ export default function App() {
     } finally {
       off?.();
       if (job) desktop.printCancel?.(job);
-      if (tmpDoc) pdf.close(tmpDoc);
+      prepared?.close();
       setTask(null);
       setBusy(false);
     }
   }
+
+  /**
+   * Páginas listas para pasar a imagen (imprimir, exportar, copiar): sin cambios, directamente de su PDF; si alguna
+   * tiene cambios (o es nueva), lo compuesto como al guardar (redacciones pendientes en negro, marcas de agua…).
+   * → { sources: [{ docId, index, rot, w, h }] (w × h: tamaño visible en puntos), close() }
+   */
+  async function renderSources(list) {
+    if (!list.some(pageEdited)) {
+      return { sources: list.map((p) => { const d = displaySize(p); return { docId: p.docId, index: p.index, rot: p.rot, w: d.w, h: d.h }; }), close() {} };
+    }
+    const { bytes } = await pdf.compose(list);
+    const opened = await pdf.open(bytes, '', { docIds: stateRef.current.sources.map((x) => x.docId) });
+    return {
+      sources: opened.pages.map((p, index) => ({ docId: opened.docId, index, rot: 0, w: p.width, h: p.height })),
+      close: () => pdf.close(opened.docId),
+    };
+  }
+
+  // --- Exportar como imagen y «Copiar como imagen» ---------------------------------------
+  // Un PNG o JPG por página en la carpeta elegida (ImageExportDialog), o una página al portapapeles (clic derecho
+  // sobre ella → PageMenu). Lo que se ve, como al imprimir: con las anotaciones, la marca de agua, etc.
+  const [imgOpen, setImgOpen] = useState(false);
+  const [pageMenu, setPageMenu] = useState(null); // { key, x, y }: menú del clic derecho sobre una página
+  // Archivos de imagen: el proceso principal antiguo no tiene image:save, pero file:save escribe en cualquier ruta.
+  const saveImage = (o) => (typeof desktop.saveImage === 'function' ? desktop.saveImage(o) : desktop.savePdf({ bytes: o.bytes, path: o.path, suggestedName: o.path }));
+
+  async function runImageExport({ keys, format, quality, dpi, folder, names, targets }) {
+    setImgOpen(false);
+    const set = new Set(keys);
+    const list = stateRef.current.pages.filter((p) => set.has(p.key));
+    if (!list.length) return;
+    const job = { cancelled: false };
+    let done = 0;
+    let prepared = null;
+    setBusy(true);
+    setTask({ kind: 'image', done: 0, total: list.length, cancel: () => { job.cancelled = true; setTask((x) => (x ? { ...x, cancelling: true } : x)); } });
+    try {
+      prepared = await renderSources(list);
+      for (const [i, src] of prepared.sources.entries()) {
+        if (job.cancelled) break;
+        const size = pixelSize(src.w, src.h, dpi);
+        const bytes = await pdf.renderImage(src.docId, src.index, { scale: size.scale, rot: src.rot, format, quality, dpi: size.dpi });
+        const res = await saveImage({ bytes, path: folder ? targets[i] : names[i] });
+        if (!res) break;
+        done++;
+        setTask((x) => (x ? { ...x, done } : x));
+      }
+      const where = folder ? folder.split(/[\\/]/).filter(Boolean).pop() ?? folder : '';
+      if (done < list.length) notify(t('core.img.stopped', { done, total: list.length }), done ? 'info' : 'error');
+      else if (!folder) notify(t('core.img.downloaded', { count: done }));
+      else notify(t('core.img.done', { count: done, folder: where }), 'info', typeof desktop.revealFile === 'function' ? { label: t('core.split.reveal'), run: () => desktop.revealFile(targets[0]) } : null);
+    } catch (e) {
+      notify(t('core.img.failed', { error: e.message }), 'error');
+    } finally {
+      prepared?.close();
+      setTask(null);
+      setBusy(false);
+    }
+  }
+
+  async function copyPageImage(key) {
+    setPageMenu(null);
+    const s = stateRef.current;
+    const i = s.pages.findIndex((p) => p.key === key);
+    if (i < 0) return;
+    if (!policyRef.current.copy) { notify(policyRef.current.notice, 'error'); return; }
+    let prepared = null;
+    setBusy(true);
+    try {
+      prepared = await renderSources([s.pages[i]]);
+      const src = prepared.sources[0];
+      const size = pixelSize(src.w, src.h, COPY_DPI);
+      const bytes = await pdf.renderImage(src.docId, src.index, { scale: size.scale, rot: src.rot, format: 'png', dpi: size.dpi });
+      const res = typeof desktop.copyImage === 'function'
+        ? await desktop.copyImage(bytes)
+        : await navigator.clipboard.write([new ClipboardItem({ 'image/png': new Blob([bytes], { type: 'image/png' }) })]).then(() => ({ ok: true }));
+      if (res?.ok === false) throw new Error(t('core.copyImage.empty'));
+      notify(t('core.copyImage.done', { n: i + 1 }));
+    } catch (e) {
+      notify(t('core.copyImage.failed', { error: e.message }), 'error');
+    } finally {
+      prepared?.close();
+      setBusy(false);
+    }
+  }
+
+  // Clic derecho (o la tecla de menú / Mayús+F10) sobre una página: su menú. Las páginas llevan data-page-key.
+  useEffect(() => {
+    const onMenu = (e) => {
+      const el = e.target.closest?.('[data-page-key]');
+      if (!el || e.target.closest('input, textarea, [contenteditable="true"]')) return;
+      if (document.querySelector('[aria-modal="true"]')) return;
+      e.preventDefault();
+      const r = el.getBoundingClientRect();
+      const fromKeys = e.clientX === 0 && e.clientY === 0;
+      setPageMenu({ key: el.dataset.pageKey, x: fromKeys ? r.left + 24 : e.clientX, y: fromKeys ? r.top + 24 : e.clientY });
+    };
+    window.addEventListener('contextmenu', onMenu);
+    return () => window.removeEventListener('contextmenu', onMenu);
+  }, []);
+  useEffect(() => { setPageMenu(null); }, [tabId, state.mode]);
 
   // --- Insertar imágenes como páginas ------------------------------------------
   /** Elegir imágenes con el selector del sistema (también vale en Electron: input de archivo). */
@@ -1018,6 +1118,17 @@ export default function App() {
         if (!policyRef.current.content) { notify(policyRef.current.notice, 'error'); break; }
         setReduceOpen(true);
         break;
+      case 'exportImage':
+        if (!s.pages.length) break;
+        if (!policyRef.current.copy) { notify(policyRef.current.notice, 'error'); break; }
+        setImgOpen(true);
+        break;
+      case 'copyImage': {
+        // Editar → Copiar la página como imagen: la actual al leer; en Organizar, la última seleccionada.
+        const key = s.mode === 'read' ? s.pages[s.current]?.key : [...s.selected].pop() ?? s.pages[s.current]?.key;
+        if (key) copyPageImage(key);
+        break;
+      }
       case 'exportExcel':
       case 'exportWord':
         if (!s.pages.length) break;
@@ -1384,7 +1495,7 @@ export default function App() {
     new: idle, ocr: idle && ocrTargets.length > 0 && policy.content, watermark: idle && has && policy.content, print: idle && has && policy.print,
     newTab: idle, closeTab: idle, nextTab: idle && root.tabs.length > 1, prevTab: idle && root.tabs.length > 1,
     detachTab: idle && root.tabs.length > 1 && typeof desktop.detachTab === 'function', split: idle && has && policy.pages,
-    share: idle && has, exportExcel: idle && has && policy.copy, exportWord: idle && has && policy.copy, reduce: idle && has && policy.content, protect: idle && has, unprotect: idle && has && willBeProtected(state),
+    share: idle && has, exportExcel: idle && has && policy.copy, exportWord: idle && has && policy.copy, exportImage: idle && has && policy.copy, copyImage: idle && has && policy.copy, reduce: idle && has && policy.content, protect: idle && has, unprotect: idle && has && willBeProtected(state),
     unlock: idle && state.sources.some((src) => src.security?.encrypted && !src.security.owner && !allAllowed(src.security.perms)), openRecent: idle, clearRecents: true, none: false,
     organize: has, read: has, zoomIn: has && state.mode === 'read', zoomOut: has && state.mode === 'read', zoomFit: has && state.mode === 'read',
   };
@@ -1492,7 +1603,7 @@ export default function App() {
   }, [tabId]);
 
   const showOpening = useDelayed(task?.kind === 'open');
-  const showSaving = useDelayed(task?.kind === 'save' || task?.kind === 'extract' || task?.kind === 'print' || task?.kind === 'ocr' || task?.kind === 'split');
+  const showSaving = useDelayed(task?.kind === 'save' || task?.kind === 'extract' || task?.kind === 'print' || task?.kind === 'ocr' || task?.kind === 'split' || task?.kind === 'image');
   const preparing = useDelayed(!engineReady);
   const savingLabel = task?.kind === 'save' ? t('core.task.saving') : task?.kind === 'extract' ? t('core.task.extracting') : null;
   const hasTargets = targetKeys(state).size > 0;
@@ -1618,6 +1729,29 @@ export default function App() {
           filesExist={(paths) => Promise.resolve().then(() => desktop.filesExist?.(paths) ?? [])}
           onCancel={() => setSplitOpen(false)}
           onSplit={runSplit}
+        />
+      )}
+      {imgOpen && (
+        <ImageExportDialog
+          pages={state.pages}
+          selected={state.selected}
+          docName={(state.file?.name ?? state.sources[0]?.name ?? t('dialogs.defaultDocName')).replace(/\.pdf$/i, '')}
+          defaultFolder={typeof desktop.chooseFolder === 'function' ? outputFolder(prefs, dirOf(state.file?.path ?? state.sources.find((x) => x.path)?.path ?? '')) : ''}
+          canPickFolder={typeof desktop.chooseFolder === 'function'}
+          chooseFolder={(o) => desktop.chooseFolder(o)}
+          filesExist={(paths) => Promise.resolve().then(() => desktop.filesExist?.(paths) ?? [])}
+          notices={state.pages.some((p) => p.annots.some((a) => a.type === 'redact')) ? [t('dialogs.img.redact')] : []}
+          onCancel={() => setImgOpen(false)}
+          onExport={runImageExport}
+        />
+      )}
+      {pageMenu && (
+        <PageMenu
+          x={pageMenu.x} y={pageMenu.y}
+          label={t('core.copyImage.menu', { n: state.pages.findIndex((p) => p.key === pageMenu.key) + 1 })}
+          canCopy={policy.copy && !busy}
+          onCopyImage={() => copyPageImage(pageMenu.key)}
+          onClose={() => setPageMenu(null)}
         />
       )}
       {protectOpen && (
@@ -1949,6 +2083,8 @@ function StatusBar({ state, docName, tool, stampName: pending, task, sigGroups, 
             <span className="tabnum whitespace-nowrap">
               {task.kind === 'split'
                 ? task.cancelling ? t('core.task.cancelling') : t('core.task.splitFile', { n: Math.min(task.done + 1, task.total), total: task.total })
+                : task.kind === 'image'
+                ? task.cancelling ? t('core.task.cancelling') : t('core.task.imagePage', { n: Math.min(task.done + 1, task.total), total: task.total })
                 : task.kind === 'ocr'
                 ? task.cancelling ? t('core.task.cancelling') : task.loading ? t('core.task.ocrLoading') : t('core.task.ocrPage', { n: Math.min(task.done + 1, task.total), total: task.total })
                 : task.kind === 'print'

@@ -1,0 +1,12 @@
+/*
+ * Grupo de opciones (src/components/Choice.jsx). Prefijo ch-.
+ * Es v-segmented de spider-ui con semántica de radio: el elegido lleva aria-checked (spider-ui marca aria-selected
+ * y aria-pressed); aquí se le da el mismo aspecto. .v-segmented delante para pesar más que spider-ui.
+ */
+.ch-seg { flex-wrap: wrap; }
+.v-segmented.ch-seg .v-segmented__item[aria-checked="true"] {
+  color: var(--sp-text-primary);
+  background: var(--sp-bg);
+  border-color: var(--sp-border);
+  box-shadow: var(--sp-shadow);
+}
