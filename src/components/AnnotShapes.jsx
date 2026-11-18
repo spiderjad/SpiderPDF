@@ -8,7 +8,8 @@ export const NOTE_PT = 20; // tamaño del icono de nota en el PDF (ver pdfium-co
 
 /** Orden de dibujo, de abajo arriba: la redacción siempre encima de todo. */
 // Firmas y texto nuevo comparten capa (son contenido): entre ellos manda el orden de la lista (traer al frente…).
-export const LAYER = { highlight: 0, ink: 1, note: 2, image: 3, textbox: 3, redact: 9 };
+// Borrar va debajo de todo: quita contenido del PDF, y lo que añade el usuario puede ir encima.
+export const LAYER = { erase: -1, highlight: 0, ink: 1, note: 2, image: 3, textbox: 3, redact: 9 };
 export const byLayer = (a, b) => (LAYER[a.type] ?? 5) - (LAYER[b.type] ?? 5);
 
 /** Giro total de la página en pantalla (el que trae el PDF + el del usuario). */
@@ -26,9 +27,21 @@ export function boxPx(rect, R, W, H) {
  *   hitArea: añade a la tinta un trazo invisible ancho para poder cogerla con el ratón.
  *   svgNotes: pinta las notas como un cuadrado (en Leer se pintan como botones HTML).
  *   hatchId: id del patrón rayado para las zonas a redactar; sin él se pintan en negro (miniaturas).
+ *   editing: en Leer, con un borde discontinuo que dice que es algo que se quitará (Borrar).
  */
-export function AnnotShape({ a, W, H, R, pxPerPt, hitArea = false, svgNotes = false, hatchId = null, style, ...props }) {
+export function AnnotShape({ a, W, H, R, pxPerPt, hitArea = false, svgNotes = false, hatchId = null, editing = false, style, ...props }) {
   const px = (u, v) => { const [x, y] = toDisplay(u, v, R); return [x * W, y * H]; };
+
+  if (a.type === 'erase') {
+    // Lo que se quita del PDF: en blanco, como quedará (la página es blanca); en Leer, con su borde.
+    const b = boxPx(a.rect, R, W, H);
+    return (
+      <g {...props} style={style} data-erase={a.image ? 'image' : 'zone'}>
+        <rect x={b.x} y={b.y} width={b.w} height={b.h} fill="#fff" />
+        {editing && <rect x={b.x + 0.5} y={b.y + 0.5} width={Math.max(0, b.w - 1)} height={Math.max(0, b.h - 1)} fill="none" stroke="#8a8a8a" strokeWidth={1} strokeDasharray="4 3" />}
+      </g>
+    );
+  }
 
   if (a.type === 'highlight') {
     const b = boxPx(a.rect, R, W, H);

@@ -256,6 +256,9 @@ self.onmessage = async ({ data: { id, op, args } }) => {
       case 'dropProtection':
         protections.delete(args.token);
         break;
+      case 'imageObjects': // «Borrar»: imágenes que se pueden quitar con un clic
+        result = core.imageObjects(args.docId, args.index);
+        break;
       case 'sourceBytes': // pasar una pestaña a otra ventana: el PDF tal como se abrió
         result = core.sourceBytes(args.docId);
         transfer = [result.buffer];

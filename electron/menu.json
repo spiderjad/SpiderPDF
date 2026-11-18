@@ -10,6 +10,7 @@
       "-",
       { "label": { "es": "Guardar", "en": "Save", "ca": "Desa" }, "cmd": "save", "accel": "CmdOrCtrl+S" },
       { "label": { "es": "Guardar como…", "en": "Save as…", "ca": "Desa com a…" }, "cmd": "saveAs", "accel": "CmdOrCtrl+Shift+S" },
+      { "label": { "es": "Guardar una copia…", "en": "Save a copy…", "ca": "Desa una còpia…" }, "cmd": "saveCopy" },
       { "label": { "es": "Extraer selección…", "en": "Extract selection…", "ca": "Extreu la selecció…" }, "cmd": "extract", "accel": "CmdOrCtrl+E" },
       { "label": { "es": "Dividir PDF…", "en": "Split PDF…", "ca": "Divideix el PDF…" }, "cmd": "split" },
       "-",

@@ -105,12 +105,13 @@ function mdpPolicy(sources) {
 export function allowedTools(policy) {
   return new Set(['select',
     ...(policy.annots ? ['highlight', 'ink', 'note'] : []),
-    ...(policy.content ? ['signature', 'textbox', 'text', 'redact'] : [])]);
+    ...(policy.content ? ['signature', 'textbox', 'text', 'erase', 'redact'] : [])]);
 }
 
 const PAGE_ACTIONS = new Set(['rotate', 'delete', 'move', 'add']);
-// Firma gráfica, texto nuevo y zonas a redactar cambian el contenido de la página; el resto son anotaciones.
-const annotKind = (type) => (type === 'image' || type === 'redact' || type === 'textbox' ? 'content' : 'annots');
+// Firma gráfica, texto nuevo, borrar y zonas a redactar cambian el contenido de la página; el resto son anotaciones.
+const CONTENT = new Set(['image', 'redact', 'textbox', 'erase']);
+const annotKind = (type) => (CONTENT.has(type) ? 'content' : 'annots');
 
 /** ¿La política permite esta acción del reducer? state: para saber el tipo de una anotación existente. */
 export function allows(policy, a, state) {

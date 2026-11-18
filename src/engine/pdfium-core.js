@@ -757,6 +757,61 @@ export class PdfCore {
     }
   }
 
+  // --- Borrar: imágenes de la página ------------------------------------------------------
+  /**
+   * Imágenes de primer nivel de una página (firma escaneada, logo, foto) con su caja en fracciones sin girar, para
+   * «Borrar»: un clic sobre una la quita. No cuentan las diminutas ni las que ocupan casi toda la página (un escaneo
+   * es la página entera: para eso está borrar una zona). → [{ rect }]
+   */
+  imageObjects(docId, index) {
+    const page = this.m.FPDF_LoadPage(this.doc(docId), index);
+    if (!page) throw new Error(this.lastError());
+    try {
+      const [l, b, r, t] = this.box(page);
+      const W = r - l; const H = t - b;
+      const out = [];
+      const n = this.m.FPDFPage_CountObjects(page);
+      for (let k = 0; k < n; k++) {
+        const o = this.m.FPDFPage_GetObject(page, k);
+        if (this.m.FPDFPageObj_GetType(o) !== OBJ.IMAGE) continue;
+        const [x0, y0, x1, y1] = this.objBounds(o); // izquierda, abajo, derecha, arriba
+        const area = ((x1 - x0) * (y1 - y0)) / (W * H);
+        if (area < 0.0004 || area > 0.85) continue;
+        const c = (v) => Math.min(1, Math.max(0, v));
+        out.push({ rect: [c((x0 - l) / W), c((t - y1) / H), c((x1 - l) / W), c((t - y0) / H)] });
+      }
+      return out;
+    } finally {
+      this.m.FPDF_ClosePage(page);
+    }
+  }
+
+  /** Quita las imágenes de primer nivel cuya caja coincide con alguna de rects (fracciones sin girar). → cuántas */
+  removeImages(entry, index, rects) {
+    if (!rects?.length) return 0;
+    const page = this.openPage(entry, index);
+    let removed = 0;
+    try {
+      const [l, b, r, t] = this.box(page);
+      const W = r - l; const H = t - b;
+      const near = (a, z) => a.every((v, i) => Math.abs(v - z[i]) < 0.004);
+      for (let k = this.m.FPDFPage_CountObjects(page) - 1; k >= 0; k--) {
+        const o = this.m.FPDFPage_GetObject(page, k);
+        if (this.m.FPDFPageObj_GetType(o) !== OBJ.IMAGE) continue;
+        const [x0, y0, x1, y1] = this.objBounds(o);
+        const box = [(x0 - l) / W, (t - y1) / H, (x1 - l) / W, (t - y0) / H];
+        if (!rects.some((z) => near(box, z))) continue;
+        this.m.FPDFPage_RemoveObject(page, o);
+        this.m.FPDFPageObj_Destroy(o);
+        removed++;
+      }
+      if (removed) this.m.FPDFPage_GenerateContent(page);
+    } finally {
+      this.closePage(entry, page);
+    }
+    return removed;
+  }
+
   // --- texto existente ------------------------------------------------------------------
   objBounds(o) {
     return this.withMem(16, (p) => { this.m.FPDFPageObj_GetBounds(o, p, p + 4, p + 8, p + 12); return this.floats(p, 4); });
@@ -1196,8 +1251,9 @@ export class PdfCore {
   /**
    * Elimina de verdad el contenido bajo las zonas (fracciones sin rotar [u0, v0, u1, v1]) y las tapa con negro.
    * Devuelve avisos de lo que no se pudo limpiar del todo.
+   * fill: color de las zonas y de los píxeles tapados ([r, g, b]); «Borrar» usa blanco.
    */
-  redact(entry, index, zones) {
+  redact(entry, index, zones, { fill = [0, 0, 0] } = {}) {
     if (!zones?.length) return [];
     const warnings = new Set();
     const page = this.openPage(entry, index);
@@ -1274,7 +1330,7 @@ export class PdfCore {
         const remove = () => { this.m.FPDFPage_RemoveObject(page, o); this.m.FPDFPageObj_Destroy(o); };
         if (type === OBJ.IMAGE) {
           if (inside(bounds)) remove();
-          else if (!this.blackenImage(o, Z)) { remove(); warnings.add(tr('engine.warn.imageRemoved', { page: index + 1 })); }
+          else if (!this.blackenImage(o, Z, fill)) { remove(); warnings.add(tr('engine.warn.imageRemoved', { page: index + 1 })); }
         } else if (type === OBJ.PATH || type === OBJ.SHADING) {
           if (inside(bounds)) remove();
         } else if (type === OBJ.FORM) {
@@ -1305,10 +1361,10 @@ export class PdfCore {
         if (widget) warnings.add(tr('engine.warn.fieldRemoved', { page: index + 1 }));
       }
 
-      // 4. Recuadros negros.
+      // 4. Recuadros negros (o del color pedido).
       for (const [x0, y0, x1, y1] of Z) {
         const rect = this.m.FPDFPageObj_CreateNewRect(x0, y0, x1 - x0, y1 - y0);
-        this.m.FPDFPageObj_SetFillColor(rect, 0, 0, 0, 255);
+        this.m.FPDFPageObj_SetFillColor(rect, fill[0], fill[1], fill[2], 255);
         this.m.FPDFPath_SetDrawMode(rect, 1, 0);
         this.m.FPDFPage_InsertObject(page, rect);
       }
@@ -1319,8 +1375,8 @@ export class PdfCore {
     return [...warnings];
   }
 
-  /** Pinta de negro, en los píxeles de la imagen, lo que cae dentro de las zonas (en puntos). */
-  blackenImage(o, Z) {
+  /** Pinta de negro (o de fill), en los píxeles de la imagen, lo que cae dentro de las zonas (en puntos). */
+  blackenImage(o, Z, fill = [0, 0, 0]) {
     const src = this.m.FPDFImageObj_GetBitmap(o);
     if (!src) return false;
     try {
@@ -1347,7 +1403,7 @@ export class PdfCore {
             const s = sp + y * stride + x * bpp;
             const t = dp + y * ds + x * 3;
             const black = Z.some((z) => px >= z[0] && px <= z[2] && py >= z[1] && py <= z[3]);
-            if (black) { heap[t] = 0; heap[t + 1] = 0; heap[t + 2] = 0; }
+            if (black) { heap[t] = fill[2]; heap[t + 1] = fill[1]; heap[t + 2] = fill[0]; } // BGR
             else if (bpp === 1) { heap[t] = heap[s]; heap[t + 1] = heap[s]; heap[t + 2] = heap[s]; }
             else { heap[t] = heap[s]; heap[t + 1] = heap[s + 1]; heap[t + 2] = heap[s + 2]; }
           }
@@ -1482,8 +1538,15 @@ export class PdfCore {
           this.m.FPDFPage_SetRotation(page, (this.m.FPDFPage_GetRotation(page) + r.rot) % 4);
           this.m.FPDF_ClosePage(page);
         }
+        // Borrar (imágenes del PDF y zonas en blanco): antes que lo que añade el usuario, que puede ir encima.
+        const erase = (r.annots ?? []).filter((a) => a.type === 'erase');
+        if (erase.length) {
+          this.removeImages(dest, i, erase.filter((a) => a.image).map((a) => a.rect));
+          const blank = erase.filter((a) => !a.image).map((a) => a.rect);
+          if (blank.length) this.warnings.push(...this.redact(dest, i, blank, { fill: [255, 255, 255] }));
+        }
         if (r.ocr?.length) this.applyOcr(dest, i, r.ocr, fonts.get(OCR_FONT));
-        const annots = r.annots?.filter((a) => a.type !== 'redact');
+        const annots = r.annots?.filter((a) => a.type !== 'redact' && a.type !== 'erase');
         if (annots?.length) this.applyAnnots(dest, i, annots, zonesOf(r), fonts);
         const zones = zonesOf(r);
         if (zones.length) this.warnings.push(...this.redact(dest, i, zones));

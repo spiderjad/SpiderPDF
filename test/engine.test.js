@@ -1598,6 +1598,69 @@ console.log('  negrita y cursiva leídas de la propia fuente (PDF con nombres ge
   core.close(G.docId);
 }
 
+console.log('  borrar (imágenes del PDF y zonas en blanco):');
+{
+  // Una página con texto, una «firma» (imagen azul) y un logo (imagen roja).
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const firma = await doc.embedPng(pngRGB(120, 40, () => [20, 40, 160]));
+  const logo = await doc.embedPng(pngRGB(60, 60, () => [200, 30, 30]));
+  const p = doc.addPage([595, 842]);
+  p.drawText('Firmado: Juan Garcia', { x: 60, y: 700, size: 14, font });
+  p.drawImage(firma, { x: 60, y: 600, width: 180, height: 60 });
+  p.drawImage(logo, { x: 450, y: 760, width: 60, height: 60 });
+  const E = core.open(await doc.save());
+  const imgs = core.imageObjects(E.docId, 0);
+  const inPx = (bytes, u, v) => {
+    const d = core.open(bytes);
+    const r = core.render(d.docId, 0, 1, 0);
+    const o = (Math.floor(v * r.height) * r.width + Math.floor(u * r.width)) * 4;
+    core.close(d.docId);
+    return [r.pixels[o], r.pixels[o + 1], r.pixels[o + 2]];
+  };
+  const objTypes = (bytes) => {
+    const d = core.open(bytes);
+    const pg = core.m.FPDF_LoadPage(core.doc(d.docId), 0);
+    const n = core.m.FPDFPage_CountObjects(pg);
+    const types = Array.from({ length: n }, (_, k) => core.m.FPDFPageObj_GetType(core.m.FPDFPage_GetObject(pg, k)));
+    core.m.FPDF_ClosePage(pg);
+    const text = core.pageText(d.docId, 0);
+    core.close(d.docId);
+    return { images: types.filter((x) => x === 3).length, text };
+  };
+
+  t('  · imageObjects: las imágenes de la página con su caja (en fracciones sin girar)', () => {
+    assert.equal(imgs.length, 2);
+    const firmaBox = imgs.find((x) => Math.abs(x.rect[0] - 60 / 595) < 0.002);
+    assert.ok(firmaBox, 'la firma');
+    assert.ok(Math.abs(firmaBox.rect[1] - (842 - 660) / 842) < 0.002 && Math.abs(firmaBox.rect[3] - (842 - 600) / 842) < 0.002);
+  });
+
+  t('  · quitar una imagen (la firma): desaparece; el texto y el logo siguen', () => {
+    const firmaBox = imgs.find((x) => Math.abs(x.rect[0] - 60 / 595) < 0.002).rect;
+    const out = core.compose([{ docId: E.docId, index: 0, rot: 0, annots: [{ id: 'e1', type: 'erase', image: true, rect: firmaBox }] }]);
+    const r = objTypes(out);
+    assert.equal(r.images, 1);
+    assert.match(r.text, /Firmado: Juan Garcia/);
+    const [cr, cg, cb] = inPx(out, (firmaBox[0] + firmaBox[2]) / 2, (firmaBox[1] + firmaBox[3]) / 2);
+    assert.ok(cr > 240 && cg > 240 && cb > 240, `donde estaba la firma, blanco: ${[cr, cg, cb]}`);
+  });
+
+  t('  · borrar una zona: lo de dentro se quita de verdad y queda en blanco; lo de fuera, intacto', () => {
+    // Zona sobre «Juan Garcia» (desde x = 125 pt) y la mitad izquierda de la firma.
+    const zone = [120 / 595, (842 - 720) / 842, 150 / 595, (842 - 590) / 842];
+    const out = core.compose([{ docId: E.docId, index: 0, rot: 0, annots: [{ id: 'e2', type: 'erase', rect: zone }] }]);
+    const r = objTypes(out);
+    assert.match(r.text, /Firmado:/);
+    assert.doesNotMatch(r.text, /Juan/);
+    const [cr, cg, cb] = inPx(out, 135 / 595, (842 - 630) / 842); // dentro de la zona, sobre la firma
+    assert.ok(cr > 240 && cg > 240 && cb > 240, `blanco: ${[cr, cg, cb]}`);
+    const [fr, , fb] = inPx(out, 200 / 595, (842 - 630) / 842); // la firma, fuera de la zona
+    assert.ok(fb > 120 && fr < 80, `la firma sigue fuera de la zona: ${[fr, fb]}`);
+  });
+  core.close(E.docId);
+}
+
 await mkdir('test/out', { recursive: true });
 await writeFile('test/out/resultado.pdf', out);
 console.log(`\n${passed} pruebas superadas. Salida en test/out/resultado.pdf`);

@@ -39,7 +39,7 @@ export const hasRedactions = (pages) => pages.some((p) => (p.annots ?? []).some(
  *   defaultPath: ruta propuesta en el diálogo (la carpeta de salida de Preferencias, outDir; si no hay, la del original).
  *   originals: rutas de los PDF de partida (para avisar si se va a reemplazar uno).
  */
-export function planSave({ file, sources = [], pages, asNew = false, extract = false, dirty = true, outDir = '' }) {
+export function planSave({ file, sources = [], pages, asNew = false, extract = false, copy = false, dirty = true, outDir = '' }) {
   const redacted = hasRedactions(pages);
   const signedOriginals = sources.filter((s) => s.signed > 0 && s.path).map((s) => s.path);
   const originalPath = file?.path ?? sources.find((s) => s.path)?.path ?? null;
@@ -52,8 +52,9 @@ export function planSave({ file, sources = [], pages, asNew = false, extract = f
       if (base.endsWith(tail)) { base = base.slice(0, -tail.length); break; }
     }
     suggestedName = t('dialogs.savePlan.redactedName', { base });
-  } else suggestedName = `${base}.pdf`;
-  const direct = !extract && !asNew && !redacted && file?.path;
+  } else suggestedName = copy ? t('dialogs.savePlan.copyName', { base }) : `${base}.pdf`;
+  // «Guardar una copia»: siempre pregunta dónde y el documento sigue siendo el original.
+  const direct = !extract && !asNew && !copy && !redacted && file?.path;
   const overSigned = !!direct && signedOriginals.some((p) => samePath(p, file.path));
   return {
     redacted,

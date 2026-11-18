@@ -204,11 +204,19 @@ export const pdf = {
     return linkCache.get(key);
   },
 
+  /** Imágenes de una página que «Borrar» puede quitar con un clic: [{ rect }] (en caché). */
+  imageObjects(docId, index) {
+    if (docId == null) return Promise.resolve([]);
+    const key = `${docId}:${index}`;
+    if (!imageObjCache.has(key)) imageObjCache.set(key, call('imageObjects', { docId, index }).catch(() => []));
+    return imageObjCache.get(key);
+  },
+
   /** Bytes del PDF tal como se abrió (para pasar una pestaña a otra ventana). → Uint8Array */
   sourceBytes: (docId) => call('sourceBytes', { docId }),
 
   close(docId) {
-    for (const c of [fieldCache, runCache, charCache, outlineCache, linkCache, fontDataCache, scanCache]) for (const key of c.keys()) if (key.startsWith(`${docId}:`)) c.delete(key);
+    for (const c of [fieldCache, runCache, charCache, outlineCache, linkCache, fontDataCache, scanCache, imageObjCache]) for (const key of c.keys()) if (key.startsWith(`${docId}:`)) c.delete(key);
     return call('close', { docId });
   },
 };
@@ -218,6 +226,7 @@ const runCache = new Map();   // "docId:index" -> Promise<bloques de texto>
 const charCache = new Map();  // "docId:index" -> Promise<texto con cajas por carácter>
 const outlineCache = new Map(); // "docId:" -> Promise<índice>
 const linkCache = new Map(); // "docId:index" -> Promise<enlaces>
+const imageObjCache = new Map(); // "docId:index" -> Promise<imágenes que se pueden borrar>
 const fontDataCache = new Map();
 const scanCache = new Map(); // "docId:" -> Promise<índices de páginas escaneadas>
 const ocrCache = new WeakMap(); // palabras del OCR -> caracteres (se rehacen si cambian)

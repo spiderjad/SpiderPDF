@@ -57,7 +57,7 @@ import { t, useT, setLang, resolveLang, getLang } from './i18n/index.js';
 
 /** Acciones que chocan con una tarea en curso (abrir, guardar…): se ignoran mientras dure. */
 // Cambiar, cerrar o mover pestañas también: la tarea es de la pestaña en la que empezó.
-const BLOCKED_WHILE_BUSY = new Set(['exportExcel', 'exportWord', 'reduce', 'share', 'protect', 'unprotect', 'unlock', 'new', 'ocr', 'open', 'openRecent', 'print', 'add', 'insertBlank', 'insertImage', 'save', 'saveAs', 'extract', 'split', 'delete', 'rotateLeft', 'rotateRight', 'undo', 'redo', 'selectAll', 'newTab', 'closeTab', 'nextTab', 'prevTab', 'detachTab']);
+const BLOCKED_WHILE_BUSY = new Set(['saveCopy', 'exportExcel', 'exportWord', 'reduce', 'share', 'protect', 'unprotect', 'unlock', 'new', 'ocr', 'open', 'openRecent', 'print', 'add', 'insertBlank', 'insertImage', 'save', 'saveAs', 'extract', 'split', 'delete', 'rotateLeft', 'rotateRight', 'undo', 'redo', 'selectAll', 'newTab', 'closeTab', 'nextTab', 'prevTab', 'detachTab']);
 
 const ZOOM_STEPS = [0.25, 0.5, 0.67, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4];
 /** ¿El foco está en un campo de texto (input, textarea o editable)? */
@@ -506,8 +506,11 @@ export default function App() {
   }, [state.pages]);
 
   // --- Guardar ---------------------------------------------------------------
-  /** Guardar, Guardar como o Extraer. → true si se escribió el archivo. */
-  async function save({ asNew = false, extract = false } = {}) {
+  /**
+   * Guardar, Guardar como, Guardar una copia (copy: escribe el documento con sus cambios en otro archivo; la pestaña
+   * sigue con el original, sin tocarlo) o Extraer. → true si se escribió el archivo.
+   */
+  async function save({ asNew = false, extract = false, copy = false } = {}) {
     const s = stateRef.current;
     const tabNow = rootRef.current.active;
     const list = extract ? s.pages.filter((p) => s.selected.has(p.key)) : s.pages;
@@ -517,7 +520,7 @@ export default function App() {
     }
     // Con redacciones nunca se escribe sobre el original: siempre se pregunta dónde (ver src/savePlan.js).
     // Un PDF firmado digitalmente tampoco se sobrescribe sin confirmarlo.
-    const plan = planSave({ file: s.file, sources: s.sources, pages: list, asNew, extract, dirty: s.dirty, outDir: prefsRef.current.outputDir });
+    const plan = planSave({ file: s.file, sources: s.sources, pages: list, asNew, extract, copy, dirty: s.dirty, outDir: prefsRef.current.outputDir });
     if (plan.skip) { notify(t('core.save.nothing')); return; }
     const zones = list.reduce((n, p) => n + p.annots.filter((a) => a.type === 'redact').length, 0);
     if (zones) {
@@ -557,6 +560,7 @@ export default function App() {
     }
     target ??= await desktop.chooseSavePath({ defaultPath });
     if (!target) return;
+    if (copy && replacesOriginal(plan, target)) { notify(t('core.save.copyIsOriginal'), 'error'); return false; }
     // Si en «Guardar como» se elige un original (redactado, o firmado y sin poder guardar en incremental), confirmación aparte.
     const overRedacted = plan.redacted && replacesOriginal(plan, target);
     const overSigned = !overwriteOk && !inc?.incremental && replacesSigned(plan, target);
@@ -578,6 +582,12 @@ export default function App() {
       setTask((t) => (t ? { ...t, done: t.total, writing: true } : t));
       const res = await desktop.savePdf({ bytes, path: target, suggestedName: target.split(/[\\/]/).pop() });
       if (!res) return;
+      if (copy) {
+        // La copia no cambia el documento: la pestaña sigue con el original (y con sus cambios sin guardar).
+        notify(t('core.save.copied', { name: res.name }), 'info', res.path && typeof desktop.revealFile === 'function'
+          ? { label: t('core.save.reveal'), run: () => desktop.revealFile(res.path) } : null);
+        return true;
+      }
       if (res.path) rememberRecent([{ path: res.path }]);
       // La ventana pasa a trabajar con lo guardado: el estado de las firmas es el del archivo nuevo.
       if (signedSrc && !extract && !plan.redacted) verifySource(signedSrc.docId, bytes);
@@ -1016,6 +1026,7 @@ export default function App() {
       case 'unlock': unlockPermissions(); break;
       case 'save': save(); break;
       case 'saveAs': save({ asNew: true }); break;
+      case 'saveCopy': save({ copy: true }); break;
       case 'extract':
         // Extraer de un PDF certificado crea una copia con la certificación rota: no se permite.
         if (!policyRef.current.pages) { notify(policyRef.current.notice, 'error'); break; }
@@ -1286,7 +1297,7 @@ export default function App() {
   const idle = !busy;
   const enabled = {
     // Con una tarea en curso (abrir, guardar…) se desactiva lo que chocaría con ella (ver BLOCKED_WHILE_BUSY).
-    open: idle, copy: !!textSel && textSel.a !== textSel.b, find: state.pages.length > 0,
+    open: idle, copy: !!textSel && textSel.a !== textSel.b, find: state.pages.length > 0, saveCopy: idle && state.pages.length > 0,
     add: idle && has && policy.pages, insertBlank: idle && has && policy.pages, insertImage: idle && has && policy.pages, save: idle && has, saveAs: idle && has, extract: idle && state.selected.size > 0 && policy.pages,
     undo: idle && state.past.length > 0, redo: idle && state.future.length > 0, selectAll: idle && has, duplicate: !!state.annotSel,
     rotateLeft: idle && hasTargetsNow && policy.pages, rotateRight: idle && hasTargetsNow && policy.pages,

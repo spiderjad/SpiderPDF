@@ -12,7 +12,7 @@ import { caretAt, charIndexAt, wordAt, lineRects } from '../textGeom.js';
 import { useT } from '../i18n/index.js';
 
 const clamp01 = (n) => Math.min(1, Math.max(0, n));
-const RESIZABLE = new Set(['image', 'redact', 'highlight', 'textbox']);
+const RESIZABLE = new Set(['image', 'redact', 'highlight', 'textbox', 'erase']);
 const CORNERS = ['nw', 'ne', 'sw', 'se'];
 const NO_CONFLICTS = { annots: new Set(), texts: new Set() };
 
@@ -49,6 +49,19 @@ export default function PageOverlay({
   // Enlaces del PDF ([{ rect, pageIndex } | { rect, uri }]): se piden con el texto, al acercarse a la vista.
   const [links, setLinks] = useState([]);
   const [linkCursor, setLinkCursor] = useState(false);
+  // «Borrar»: imágenes del PDF que se pueden quitar con un clic (firmas escaneadas, logos) y la que está bajo el puntero.
+  const [images, setImages] = useState([]);
+  const [hoverImg, setHoverImg] = useState(-1);
+  useEffect(() => {
+    if (tool !== 'erase') return undefined;
+    let alive = true;
+    pdf.imageObjects(page.docId, page.index).then((l) => alive && setImages(l)).catch(() => {});
+    return () => { alive = false; };
+  }, [tool, page.docId, page.index]);
+  const same = (a, b) => a.every((v, i) => Math.abs(v - b[i]) < 1e-6);
+  const erasable = images.filter((im) => !page.annots.some((a) => a.type === 'erase' && a.image && same(a.rect, im.rect)));
+  const imageAt = ([u, v]) => erasable.findIndex(({ rect: [u0, v0, u1, v1] }) => u >= u0 && u <= u1 && v >= v0 && v <= v1);
+  const eraseImage = (im) => dispatch({ type: 'addAnnot', key: page.key, annot: { type: 'erase', image: true, rect: im.rect } });
   const loadChars = () => {
     if (charsRef.current) return Promise.resolve(charsRef.current);
     return pdf.pageChars(page).then((c) => { charsRef.current = c; setChars(c); return c; }).catch(() => null);
@@ -85,9 +98,9 @@ export default function PageOverlay({
   }, [page.docId, page.index, page.hasForm]);
 
   const selectedId = annotSel?.key === page.key ? annotSel.id : null;
-  const drawing = tool === 'highlight' || tool === 'ink' || tool === 'note' || tool === 'redact' || tool === 'textbox';
+  const drawing = tool === 'highlight' || tool === 'ink' || tool === 'note' || tool === 'redact' || tool === 'textbox' || tool === 'erase';
   const editingId = editingBox?.key === page.key ? editingBox.id : null;
-  const rectTool = (t) => t === 'highlight' || t === 'redact';
+  const rectTool = (t) => t === 'highlight' || t === 'redact' || t === 'erase';
 
   const pt = (e) => {
     const r = svgRef.current.getBoundingClientRect();
@@ -150,7 +163,7 @@ export default function PageOverlay({
 
   // --- Seleccionar, mover y redimensionar -----------------------------------------
   const onAnnotDown = (e, a, mode = 'move', corner = null) => {
-    if (tool === 'redact' && a.type === 'redact') { onBackgroundDown(e); return; } // dibujar otra zona encima
+    if ((tool === 'redact' && a.type === 'redact') || (tool === 'erase' && a.type === 'erase')) { onBackgroundDown(e); return; } // otra zona encima
     const can = tool === 'select' || (tool === 'textbox' && a.type === 'textbox');
     if (!can || e.button !== 0) return;
     e.stopPropagation();
@@ -176,6 +189,7 @@ export default function PageOverlay({
   const onMove = (e) => {
     const g = drag.current;
     if (!g) {
+      if (tool === 'erase') { const i = imageAt(fromDisplay(...pt(e), R)); if (i !== hoverImg) setHoverImg(i); return; }
       // Cursor de mano sobre los enlaces y de texto sobre las letras (solo con Seleccionar).
       if (tool === 'select') {
         const onLinkNow = !!linkAt(pt(e));
@@ -202,6 +216,7 @@ export default function PageOverlay({
     if (rectTool(g.mode) || g.mode === 'textbox') { g.draft = { ...g.draft, x1: p[0], y1: p[1] }; setDraft(g.draft); }
     else if (g.mode === 'ink') { g.draft = { pts: [...g.draft.pts, ...p] }; setDraft(g.draft); }
     else if (g.mode === 'move') {
+      if (g.annot.type === 'erase' && g.annot.image) return; // quitar una imagen es esa imagen: no se mueve
       const dx = p[0] - g.start[0]; const dy = p[1] - g.start[1];
       if (!g.moved && Math.hypot(dx * W, dy * H) < 3) return;
       g.moved = true;
@@ -246,7 +261,11 @@ export default function PageOverlay({
       const disp = { x: Math.min(draft.x0, draft.x1), y: Math.min(draft.y0, draft.y1), w: Math.abs(draft.x1 - draft.x0), h: Math.abs(draft.y1 - draft.y0) };
       if (disp.w * W >= 4 && disp.h * H >= 4) {
         const rect = rectFromDisplay(disp, R);
-        dispatch({ type: 'addAnnot', key: page.key, annot: g.mode === 'redact' ? { type: 'redact', rect } : { type: 'highlight', rect, color } });
+        dispatch({ type: 'addAnnot', key: page.key, annot: g.mode === 'redact' ? { type: 'redact', rect } : g.mode === 'erase' ? { type: 'erase', rect } : { type: 'highlight', rect, color } });
+      } else if (g.mode === 'erase') {
+        // Clic (sin arrastrar) sobre una imagen del PDF: se quita esa imagen.
+        const i = imageAt(fromDisplay(...g.start, R));
+        if (i >= 0) { eraseImage(erasable[i]); setHoverImg(-1); }
       }
     } else if (g.mode === 'textbox' && draft) {
       // Arrastrar: el cuadro con ese tamaño. Clic: un cuadro de una línea donde se hizo clic.
@@ -311,6 +330,7 @@ export default function PageOverlay({
         onPointerMove={onMove}
         onPointerUp={onUp}
         onPointerCancel={onUp}
+        onPointerLeave={() => setHoverImg(-1)}
         onDoubleClick={(e) => {
           // Doble clic: la palabra entera.
           if (tool !== 'select' || !chars) return;
@@ -320,6 +340,10 @@ export default function PageOverlay({
           onTextSel?.({ key: page.key, a, b });
         }}
       >
+        {byType('erase').map((a) => shape(a, {
+          editing: true,
+          style: { pointerEvents: tool === 'select' || tool === 'erase' ? 'auto' : 'none', cursor: tool === 'select' && !a.image ? 'move' : undefined },
+        }))}
         {byType('highlight').map((a) => shape(a))}
         {byType('ink').map((a) => shape(a))}
       </svg>
@@ -376,6 +400,23 @@ export default function PageOverlay({
         );
       })}
 
+      {/* 4c. Borrar: un botón invisible por imagen, para quitarla con el teclado. */}
+      {tool === 'erase' && erasable.map((im, i) => {
+        const d = box(im.rect);
+        return (
+          <button
+            key={`e-${i}`}
+            type="button"
+            aria-label={t('reader.overlay.eraseImageN', { n: i + 1 })}
+            onClick={() => eraseImage(im)}
+            onFocus={() => setHoverImg(i)}
+            onBlur={() => setHoverImg(-1)}
+            className="absolute rounded-sm outline-none focus-visible:outline-2 focus-visible:outline-accent"
+            style={{ left: d.x, top: d.y, width: d.w, height: d.h, pointerEvents: 'none' }}
+          />
+        );
+      })}
+
       {/* 5. Campos de formulario: no estorban mientras se dibuja. */}
       {fields.map((f) => (
         <FieldInput key={f.annotIndex} field={canFill ? f : { ...f, readOnly: true }} page={page} b={box(f.rect)} R={R} disabled={drawing || tool === 'text'} dispatch={dispatch} />
@@ -407,6 +448,20 @@ export default function PageOverlay({
           return <rect key={`t-${i}`} x={b.x} y={b.y} width={b.w} height={b.h} fill="var(--accent)" fillOpacity={0.28} />;
         })}
 
+        {/* Borrar: las imágenes que se pueden quitar, y la que está bajo el puntero, más marcada. */}
+        {tool === 'erase' && erasable.map((im, i) => {
+          const b = box(im.rect);
+          const on = i === hoverImg;
+          return (
+            <rect
+              key={`img-${i}`}
+              x={b.x} y={b.y} width={b.w} height={b.h}
+              fill={on ? 'var(--danger)' : 'none'} fillOpacity={on ? 0.1 : 0}
+              style={{ stroke: 'var(--danger)' }} strokeOpacity={on ? 1 : 0.45} strokeWidth={on ? 1.5 : 1} strokeDasharray={on ? undefined : '4 3'}
+            />
+          );
+        })}
+
         {byType('redact').map((a) => shape(a, {
           hatchId,
           style: { pointerEvents: tool === 'select' || tool === 'redact' ? 'auto' : 'none', cursor: tool === 'select' ? 'move' : undefined },
@@ -422,7 +477,7 @@ export default function PageOverlay({
         {selBox && (
           <g>
             <rect x={selBox.x - 1.5} y={selBox.y - 1.5} width={selBox.w + 3} height={selBox.h + 3} fill="none" style={{ stroke: 'var(--accent)' }} strokeWidth={1} />
-            {(tool === 'select' || (tool === 'textbox' && selAnnot.type === 'textbox')) && RESIZABLE.has(selAnnot.type) && CORNERS.map((c) => (
+            {(tool === 'select' || (tool === 'textbox' && selAnnot.type === 'textbox')) && RESIZABLE.has(selAnnot.type) && !(selAnnot.type === 'erase' && selAnnot.image) && CORNERS.map((c) => (
               <rect
                 key={c}
                 x={(c.includes('w') ? selBox.x - 1.5 : selBox.x + selBox.w + 1.5) - HANDLE / 2}
@@ -444,6 +499,8 @@ export default function PageOverlay({
               ? { fill: 'none', style: { stroke: 'var(--accent)' }, strokeWidth: 1, strokeDasharray: '4 3' }
               : tool === 'redact'
               ? { fill: `url(#${hatchId})`, style: { stroke: 'var(--danger)' }, strokeWidth: 1.5 }
+              : tool === 'erase'
+              ? { fill: '#fff', stroke: '#8a8a8a', strokeWidth: 1, strokeDasharray: '4 3' }
               : { fill: color, fillOpacity: 0.4, style: { mixBlendMode: 'multiply' } })}
           />
         )}
@@ -458,6 +515,26 @@ export default function PageOverlay({
       {scanned && (
         <span className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 whitespace-nowrap rounded-lg border border-line bg-panel px-2.5 py-1 text-xs text-muted shadow-card">
           {t('reader.overlay.scanned')}
+        </span>
+      )}
+
+      {tool === 'erase' && hoverImg >= 0 && erasable[hoverImg] && (() => {
+        const b = box(erasable[hoverImg].rect);
+        return (
+          <span
+            className="pointer-events-none absolute whitespace-nowrap rounded-md border border-danger/30 bg-danger-soft px-1.5 py-0.5 text-[11px] font-medium leading-4 text-danger-ink shadow-card"
+            style={{ left: b.x, top: b.y > 26 ? b.y - 24 : b.y + b.h + 6 }}
+          >
+            {t('reader.overlay.eraseImage')}
+          </span>
+        );
+      })()}
+      {selAnnot?.type === 'erase' && (
+        <span
+          className="pointer-events-none absolute whitespace-nowrap rounded-md border border-line bg-panel px-1.5 py-0.5 text-[11px] font-medium leading-4 text-muted shadow-card"
+          style={{ left: selBox.x - 1.5, top: selBox.y > 26 ? selBox.y - 24 : selBox.y + selBox.h + 6 }}
+        >
+          {t(selAnnot.image ? 'reader.overlay.eraseImageLabel' : 'reader.overlay.eraseLabel')}
         </span>
       )}
 

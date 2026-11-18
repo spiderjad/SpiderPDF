@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   FolderOpen, FilePlus2, LayoutGrid, BookOpen, Undo2, Redo2, RotateCcw, RotateCw,
   Trash2, FileOutput, ZoomIn, ZoomOut, MoveHorizontal, Save, LoaderCircle, Search,
-  FilePlus, File as FileIcon, ImagePlus, ChevronDown, Share2, FileDown,
+  FilePlus, File as FileIcon, ImagePlus, ChevronDown, Share2, FileDown, Download,
 } from 'lucide-react';
 import { WordBadge, ExcelBadge } from './FileBadges.jsx';
 import { useT } from '../i18n/index.js';
@@ -11,7 +11,8 @@ import './Toolbar.css';
 
 /**
  * Cabecera de la app (spider-ui: v-toolbar, v-btn-ghost, v-btn-icon, v-segmented, v-menu, v-btn-primary).
- * De izquierda a derecha: archivo · vista · deshacer · páginas · (zoom en Leer) · exportar, compartir y guardar.
+ * De izquierda a derecha: archivo · vista · deshacer · páginas · (zoom en Leer) · exportar, compartir, descargar (guardar
+ * una copia) y guardar.
  * En ventanas estrechas los botones con texto se quedan en icono (Toolbar.css); el nombre sigue en title y aria-label.
  */
 export default function Toolbar({ state, hasTargets, busy, run, savingLabel, canPages = true, canExport = true }) {
@@ -96,6 +97,7 @@ export default function Toolbar({ state, hasTargets, busy, run, savingLabel, can
           ]}
         />
         <Ghost onClick={() => run('share')} title={t('core.toolbar.shareTitle')} icon={Share2} disabled={!has || busy} label={t('core.toolbar.share')} />
+        <Ghost onClick={() => run('saveCopy')} title={t('core.toolbar.downloadTitle')} icon={Download} disabled={!has || busy} label={t('core.toolbar.download')} />
       </div>
       <button type="button" onClick={() => run('save')} disabled={!has || busy} title={t('core.toolbar.save') + k('CmdOrCtrl+S')} className="v-btn-primary hd-save">
         {savingLabel ? <LoaderCircle size={16} strokeWidth={1.75} className="spin" aria-hidden="true" /> : <Save size={16} strokeWidth={1.75} aria-hidden="true" />}

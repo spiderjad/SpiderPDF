@@ -258,6 +258,7 @@ export default {
     'dialogs.savePlan.extractName': '{base} (extracto).pdf',
     'dialogs.savePlan.redactedName': '{base} (redactado).pdf',
     'dialogs.savePlan.modifiedName': '{base} (modificado).pdf',
+    'dialogs.savePlan.copyName': '{base} (copia).pdf',
     'dialogs.savePlan.replaceOriginal': 'Vas a reemplazar el original. El texto redactado no se podrá recuperar.',
     'dialogs.savePlan.signedWarning': 'Este PDF está firmado digitalmente. Si lo modificas, la firma dejará de ser válida.',
 
@@ -515,6 +516,7 @@ export default {
     'dialogs.savePlan.extractName': '{base} (extract).pdf',
     'dialogs.savePlan.redactedName': '{base} (redacted).pdf',
     'dialogs.savePlan.modifiedName': '{base} (modified).pdf',
+    'dialogs.savePlan.copyName': '{base} (copy).pdf',
     'dialogs.savePlan.replaceOriginal': 'You’re about to replace the original. The redacted text can’t be recovered.',
     'dialogs.savePlan.signedWarning': 'This PDF is digitally signed. If you change it, the signature will no longer be valid.',
 
@@ -771,6 +773,7 @@ export default {
     'dialogs.savePlan.extractName': '{base} (extracte).pdf',
     'dialogs.savePlan.redactedName': '{base} (censurat).pdf',
     'dialogs.savePlan.modifiedName': '{base} (modificat).pdf',
+    'dialogs.savePlan.copyName': '{base} (còpia).pdf',
     'dialogs.savePlan.replaceOriginal': 'Substituiràs l’original. El text censurat no es podrà recuperar.',
     'dialogs.savePlan.signedWarning': 'Aquest PDF està signat digitalment. Si el modifiques, la signatura deixarà de ser vàlida.',
 

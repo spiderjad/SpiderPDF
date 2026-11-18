@@ -124,4 +124,14 @@ t('con carpeta de salida (Preferencias), Guardar como, Extraer y la copia se pro
   assert.equal(planSave({ ...doc(WIN, [page()]), asNew: true, outDir: '' }).defaultPath, WIN, 'sin carpeta: la del original');
 });
 
+t('«Guardar una copia»: siempre pregunta, propone «<nombre> (copia).pdf» y elegir el original se detecta', () => {
+  const p = planSave({ ...doc(WIN, [page([{ type: 'highlight' }])]), copy: true });
+  assert.equal(p.path, null, 'nunca escribe en el abierto');
+  assert.equal(p.defaultPath, 'C:\\Users\\Ana\\Documentos\\contrato (copia).pdf');
+  assert.equal(replacesOriginal(p, 'c:/users/ana/documentos/CONTRATO.pdf'), true);
+  assert.equal(replacesOriginal(p, 'C:\\Users\\Ana\\Documentos\\contrato (copia).pdf'), false);
+  // Con redacciones manda su nombre.
+  assert.match(planSave({ ...doc(WIN, [page([zone])]), copy: true }).suggestedName, /\(redactado\)\.pdf$/);
+});
+
 console.log(`\n${passed} pruebas de guardado superadas.`);
