@@ -4,13 +4,17 @@
 import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { tempDir, copyFixture, launch, stubOpen, footer, confirmDialog, thumbs } from './helpers.mjs';
+import { ROOT, tempDir, copyFixture, launch, stubOpen, footer, confirmDialog, thumbs } from './helpers.mjs';
+
+// La versión instalada es la de package.json; la «nueva» del simulado, una que siempre es mayor.
+const CURRENT = JSON.parse(await readFile(path.join(ROOT, 'package.json'), 'utf8')).version;
+const NEXT = '99.0.0';
 
 /**
- * autoUpdater simulado. mode: 'new' (hay 0.2.0: avisa y empieza a descargar, 40 %), 'latest' o 'offline'.
+ * autoUpdater simulado. mode: 'new' (hay NEXT: avisa y empieza a descargar, 40 %), 'latest' o 'offline'.
  * Lo que pasa queda en globalThis.__au (checks, installs); __au.finish() termina la descarga.
  */
-const fakeUpdater = (app, mode) => app.evaluate((_, m) => {
+const fakeUpdater = (app, mode) => app.evaluate((_, [m, current, next]) => {
   const listeners = {};
   const au = {
     checks: 0,
@@ -21,17 +25,17 @@ const fakeUpdater = (app, mode) => app.evaluate((_, m) => {
       au.checks++;
       au.emit('checking-for-update');
       if (globalThis.__auMode === 'offline') throw new Error('net::ERR_INTERNET_DISCONNECTED\n    at …');
-      if (globalThis.__auMode === 'latest') { au.emit('update-not-available', { version: '0.1.0' }); return; }
-      au.emit('update-available', { version: '0.2.0' });
+      if (globalThis.__auMode === 'latest') { au.emit('update-not-available', { version: current }); return; }
+      au.emit('update-available', { version: next });
       au.emit('download-progress', { percent: 40.7 });
     },
-    finish() { au.emit('download-progress', { percent: 100 }); au.emit('update-downloaded', { version: '0.2.0' }); },
+    finish() { au.emit('download-progress', { percent: 100 }); au.emit('update-downloaded', { version: next }); },
     quitAndInstall(...args) { au.installs.push(args); },
   };
   globalThis.__auMode = m;
   globalThis.__au = au;
   globalThis.__spiderPdfUpdateHook = au;
-}, mode);
+}, [mode, CURRENT, NEXT]);
 const au = (app) => app.evaluate(() => ({ checks: globalThis.__au.checks, installs: globalThis.__au.installs }));
 const tabBar = (win) => win.locator('.pt-bar');
 
@@ -43,13 +47,13 @@ test('al arrancar busca y descarga; botón «Reiniciar para actualizar»; con ca
   await win.reload(); // arranque con el actualizador simulado ya puesto
   await expect(win.getByText('Abre un PDF para empezar')).toBeVisible();
 
-  await expect(tabBar(win).getByRole('status')).toHaveText('Descargando la versión 0.2.0… 40 %');
+  await expect(tabBar(win).getByRole('status')).toHaveText(`Descargando la versión ${NEXT}… 40 %`);
   expect((await au(app)).checks).toBe(1);
   await app.evaluate(() => globalThis.__au.finish());
-  await expect(win.getByText('Hay una versión nueva (0.2.0): reinicia para actualizar.')).toBeVisible();
+  await expect(win.getByText(`Hay una versión nueva (${NEXT}): reinicia para actualizar.`)).toBeVisible();
   const button = tabBar(win).getByRole('button', { name: 'Reiniciar para actualizar' });
   await expect(button).toBeVisible();
-  await expect(button).toHaveAttribute('title', /La versión 0\.2\.0 está descargada/);
+  await expect(button).toHaveAttribute('title', `La versión ${NEXT} está descargada. Al reiniciar se instala y la app se vuelve a abrir.`);
 
   // Un documento con cambios: reiniciar pregunta (Cancelar no instala; «Reiniciar sin guardar», sí).
   await stubOpen(app, [contrato]);
@@ -66,7 +70,7 @@ test('al arrancar busca y descarga; botón «Reiniciar para actualizar»; con ca
   await confirmDialog(win).getByRole('button', { name: 'Reiniciar sin guardar' }).click();
   await expect.poll(async () => (await au(app)).installs).toEqual([[true, true]]); // en silencio y volviendo a abrir
   const log = await readFile(path.join(dir, 'datos-app', 'e2e.log'), 'utf8');
-  expect(log).toContain('actualizar: reiniciar e instalar 0.2.0');
+  expect(log).toContain(`actualizar: reiniciar e instalar ${NEXT}`);
   expect(errors).toEqual([]);
   await app.close(); // ya confirmado: sin volver a preguntar por los cambios
 });
@@ -82,7 +86,7 @@ test('Preferencias: versión instalada, «Buscar ahora», última versión, sin 
   const prefs = win.getByRole('dialog', { name: 'Preferencias' });
   const status = prefs.getByRole('status');
   await expect(status).toHaveText('Tienes la última versión.');
-  await expect(prefs.getByText(/^Versión 0\.1\.0\. Las versiones nuevas se descargan de GitHub/)).toBeVisible();
+  await expect(prefs.getByText(`Versión ${CURRENT}. Las versiones nuevas se descargan de GitHub y se instalan al reiniciar.`)).toBeVisible();
   await expect(tabBar(win).getByRole('button', { name: 'Reiniciar para actualizar' })).toHaveCount(0);
 
   // Sin conexión: el error se ve aquí (al arrancar no molesta con avisos).
