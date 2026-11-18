@@ -1,13 +1,17 @@
 import { createRoot } from 'react-dom/client';
 import App from './App.jsx';
 import { migrateStorage } from './storageMigration.js';
-import { setLang, resolveLang } from './i18n/index.js';
+import { setLang, resolveLang, setPlatform } from './i18n/index.js';
+import { desktop } from './desktop.js';
 import { loadPrefs } from './prefs.js';
 import 'spider-ui/spider-ui.css'; // sistema de diseño spider-ui (clases v-*): una sola vez, antes del CSS propio
 import './index.css';
 
 // Antes de pintar: firmas y preferencias guardadas con el nombre anterior de la app.
 try { migrateStorage(globalThis.localStorage); } catch { /* sin almacenamiento */ }
+
+// En macOS los textos hablan de ⌘, ⇧ y el Finder (src/i18n).
+setPlatform(desktop.platform === 'web' && /Mac/.test(navigator.platform) ? 'darwin' : desktop.platform);
 
 // Idioma antes de pintar: el de Preferencias o, en «Automático», el del sistema (src/i18n).
 const languages = [...(navigator.languages ?? [navigator.language])];

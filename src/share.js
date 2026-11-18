@@ -60,6 +60,9 @@ export function shareResult(target, r) {
     }
     return { ok: false, text: r?.message ?? t('dialogs.share.mailFailed') };
   }
+  if (target === 'system') {
+    return r?.ok ? { ok: true, text: t('dialogs.share.systemOk') } : { ok: false, text: r?.message ?? t('dialogs.share.systemFailed') };
+  }
   if (target === 'copy') {
     return r?.ok
       ? { ok: true, text: t('dialogs.share.copyOk') }

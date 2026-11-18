@@ -53,6 +53,13 @@ t('abre y lee número de páginas', () => {
   assert.equal(b.pages.length, 2);
 });
 
+t('sourceBytes: los bytes tal como se abrió (para pasar una pestaña a otra ventana), también tras componer', () => {
+  assert.deepEqual(core.sourceBytes(a.docId), new Uint8Array(A));
+  core.compose([{ docId: a.docId, index: 1, rot: 1 }]);
+  assert.deepEqual(core.sourceBytes(a.docId), new Uint8Array(A));
+  assert.throws(() => core.sourceBytes(9999));
+});
+
 t('lee tamaños (respetando la rotación que ya trae el PDF)', () => {
   assert.equal(Math.round(a.pages[0].width), 595);
   assert.equal(Math.round(b.pages[0].width), 842);

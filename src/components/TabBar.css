@@ -1,0 +1,138 @@
+/*
+ * Barra de pestañas (src/components/TabBar.jsx). Prefijo pt-.
+ * Colores, radios y sombras de spider-ui (var(--sp-*)); aquí solo la disposición. La pestaña activa es del color de
+ * la cabecera de debajo (--sp-bg) y tapa la línea inferior de la barra: se ve unida al documento.
+ */
+
+.pt-bar {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 38px;
+  padding: 0 8px;
+  flex-shrink: 0;
+  background: var(--sp-bg-muted);
+  box-shadow: inset 0 -1px 0 var(--sp-border);
+  user-select: none;
+}
+.pt-bar[data-drop] { background: var(--sp-primary-light); }
+
+.pt-list {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  min-width: 0;
+  height: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.pt-list::-webkit-scrollbar { display: none; }
+
+.pt-tab {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 1 auto;
+  width: 200px; /* ancho fijo (no el del nombre); con muchas pestañas se encogen hasta min-width y luego hay desplazamiento */
+  min-width: 96px;
+  height: 32px;
+  padding: 0 4px 0 12px;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: var(--sp-radius) var(--sp-radius) 0 0;
+  color: var(--sp-text-secondary);
+  transition: background-color 150ms ease-out, color 150ms ease-out, opacity 150ms ease-out;
+}
+.pt-tab:hover { background: var(--sp-bg-subtle); color: var(--sp-text-primary); }
+.pt-tab[data-active] { background: var(--sp-bg); border-color: var(--sp-border); color: var(--sp-text-primary); }
+.pt-tab[data-out] { opacity: 0.45; }
+
+.pt-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: default;
+}
+.pt-main:focus-visible { outline: 2px solid var(--sp-focus); outline-offset: -4px; border-radius: var(--sp-radius); }
+.pt-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pt-tab[data-active] .pt-title { font-weight: 500; }
+.pt-dot { width: 6px; height: 6px; flex-shrink: 0; border-radius: 999px; background: var(--sp-primary); }
+
+.pt-close {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--sp-text-secondary);
+  opacity: 0;
+  transition: opacity 150ms ease-out, background-color 150ms ease-out;
+}
+.pt-tab:hover .pt-close,
+.pt-tab[data-active] .pt-close,
+.pt-close:focus-visible { opacity: 1; }
+.pt-close:hover { background: var(--sp-bg-muted); color: var(--sp-text-primary); }
+.pt-close:focus-visible { outline: 2px solid var(--sp-focus); outline-offset: 0; }
+
+.pt-new { margin-bottom: 3px; flex-shrink: 0; }
+
+/* Versión nueva, a la derecha: su descarga (texto) y luego el botón para reiniciar e instalarla. Violeta = estado. */
+.pt-update {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  align-self: center;
+  height: 26px;
+  margin-left: auto;
+  padding: 0 10px;
+  border: 1px solid var(--sp-primary-border);
+  border-radius: 999px;
+  background: var(--sp-primary-light);
+  color: var(--sp-primary-text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 150ms ease-out;
+}
+button.pt-update:hover { background: var(--sp-bg); }
+button.pt-update:focus-visible { outline: 2px solid var(--sp-focus); outline-offset: 2px; }
+button.pt-update:disabled { opacity: 0.5; cursor: default; }
+.pt-update--muted { border-color: transparent; background: none; color: var(--sp-text-secondary); font-weight: 400; cursor: default; }
+
+/* Al arrastrar una pestaña fuera de la barra: etiqueta que sigue al puntero. */
+.pt-ghost {
+  position: fixed;
+  z-index: 60;
+  max-width: 300px;
+  padding: 6px 10px;
+  border: 1px solid var(--sp-border);
+  border-radius: var(--sp-radius);
+  background: var(--sp-bg);
+  box-shadow: var(--sp-shadow-md);
+  color: var(--sp-text-primary);
+  font-size: 13px;
+  pointer-events: none;
+}
+.pt-ghost__hint { display: block; margin-top: 2px; color: var(--sp-text-secondary); font-size: 12px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .pt-tab, .pt-close, .pt-update { transition: none; }
+}

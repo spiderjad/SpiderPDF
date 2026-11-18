@@ -1,8 +1,9 @@
 // Idiomas (src/i18n): detección, plurales y que el catálogo está completo en los tres idiomas.  npm test
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { t, setLang, getLang, getLocale, detectLang, resolveLang, localeFor, LANGS } from '../src/i18n/index.js';
+import { t, setLang, getLang, getLocale, detectLang, resolveLang, localeFor, LANGS, setPlatform } from '../src/i18n/index.js';
 import { AREAS, CATALOG } from '../src/i18n/catalog.js';
+import { menuModel } from '../src/menu.js';
 
 let passed = 0;
 const test = (name, fn) => { fn(); passed++; console.log(`ok - ${name}`); };
@@ -70,6 +71,41 @@ test('plurales: _one / _other con las reglas de cada idioma', () => {
     setLang('es');
   }
   assert.equal(getLang(), 'es');
+});
+
+test('macOS: teclas y nombres del sistema se adaptan solos (⌘, ⇧, ⌫, Finder)', () => {
+  CATALOG.es['test.mac'] = 'Pégalo con Ctrl+V. Mayús o Ctrl para varias. Eliminar (Supr). Mostrar en el Explorador. Se abrirá el diálogo de Windows.';
+  CATALOG.en['test.mac'] = 'Paste with Ctrl+V. Shift or Ctrl. Delete (Del). Show in File Explorer. Deleted.';
+  CATALOG.ca['test.mac'] = 'Enganxa amb Ctrl+V. Maj o Ctrl. Mostra a l’Explorador. Obre l’Explorador. Majúscules.';
+  try {
+    setLang('es');
+    assert.equal(t('test.mac'), CATALOG.es['test.mac'], 'en Windows, tal cual');
+    setPlatform('darwin');
+    assert.equal(t('test.mac'), 'Pégalo con ⌘V. ⇧ o ⌘ para varias. Eliminar (⌫). Mostrar en el Finder. Se abrirá el diálogo del sistema.');
+    setLang('en');
+    assert.equal(t('test.mac'), 'Paste with ⌘V. ⇧ or ⌘. Delete (⌫). Show in Finder. Deleted.', '«Deleted» no es la tecla Del');
+    setLang('ca');
+    assert.equal(t('test.mac'), 'Enganxa amb ⌘V. ⇧ o ⌘. Mostra al Finder. Obre el Finder. Majúscules.', '«Majúscules» no es la tecla Maj');
+  } finally {
+    setPlatform('win32');
+    for (const l of LANGS) delete CATALOG[l]['test.mac'];
+    setLang('es');
+  }
+});
+
+test('menú en macOS: Preferencias sale de Editar (va en el menú de la app) y aparecen Cortar y Pegar', () => {
+  const editar = (m) => m[1].items.filter((x) => !x.sep).map((x) => x.cmd ?? x.role);
+  assert.ok(editar(menuModel({})).includes('prefs'));
+  assert.ok(!editar(menuModel({})).includes('paste'), 'en Windows no: los gestiona el navegador');
+  const prev = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  Object.defineProperty(globalThis, 'navigator', { value: { platform: 'MacIntel' }, configurable: true });
+  try {
+    const items = editar(menuModel({}));
+    assert.ok(!items.includes('prefs'));
+    assert.deepEqual(items.slice(items.indexOf('cut'), items.indexOf('cut') + 3), ['cut', 'copy', 'paste']);
+  } finally {
+    if (prev) Object.defineProperty(globalThis, 'navigator', prev); else delete globalThis.navigator;
+  }
 });
 
 test('menú: cada etiqueta de menu.json está en los tres idiomas', () => {

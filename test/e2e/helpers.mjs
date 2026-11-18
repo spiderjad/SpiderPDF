@@ -43,6 +43,23 @@ export async function launch(dir, files = [], extraEnv = {}, { lang = 'es-ES', s
   return { app, win, errors };
 }
 
+/**
+ * Un solo documento con varios PDF unidos: arranca con el primero y añade los demás con «Añadir PDF», sin nada
+ * seleccionado. (Abrir varios a la vez los pone cada uno en su pestaña.) → lo mismo que launch.
+ */
+export async function launchMerged(dir, files, ...rest) {
+  const r = await launch(dir, [files[0]], ...rest);
+  await stubOpen(r.app, files.slice(1));
+  await r.win.keyboard.press('Control+Shift+O');
+  await expect(r.win.getByText(/^Se añadieron? \d+ páginas?\.$/)).toBeVisible();
+  await r.win.keyboard.press('Escape'); // «Añadir» deja seleccionadas las añadidas: como si se hubieran abierto juntos
+  await expect(r.win.getByText(/^\d+ de \d+ seleccionadas?$/)).toHaveCount(0);
+  return r;
+}
+
+/** Pestañas de documentos (barra de pestañas). */
+export const docTabs = (win) => win.getByRole('tablist', { name: 'Documentos abiertos' }).getByRole('tab');
+
 /** El diálogo «Abrir» nativo devuelve estos archivos. */
 export const stubOpen = (app, files) => app.evaluate(({ dialog }, f) => {
   dialog.showOpenDialog = async () => ({ canceled: false, filePaths: f });

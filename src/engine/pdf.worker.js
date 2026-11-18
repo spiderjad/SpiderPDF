@@ -10,6 +10,8 @@ import { createQpdf, finishWithQpdf } from './qpdf.js';
 import createQpdfModule from './qpdf/qpdf.mjs';
 import qpdfWasmUrl from './qpdf/qpdf.wasm?url';
 import { reducePdf } from './reduce.js';
+import { groupsBySize } from '../split.js';
+import { outlineForSave } from '../outline.js';
 import { setLang, t } from '../i18n/index.js';
 
 /** JPEG con el codificador del navegador (rápido, nativo). quality: 0-1. */
@@ -227,12 +229,36 @@ self.onmessage = async ({ data: { id, op, args } }) => {
         transfer = [bytes.buffer];
         break;
       }
+      case 'splitBySize': {
+        // «Dividir» por tamaño máximo: cada trozo se compone como se guardará (protección, índice) y se mide; los
+        // bytes de cada archivo vuelven ya hechos. keys + tree: el índice creado en la app, recortado a cada trozo.
+        await prepareTextFonts(core, args.refs);
+        const security = args.security?.token ? takeProtection(args.security.token) : args.security;
+        const warnings = new Set();
+        const sizeOf = async (from, to) => {
+          const outline = args.tree ? outlineForSave(args.keys.slice(from, to).map((key) => ({ key })), args.tree) : undefined;
+          const raw = core.compose(args.refs.slice(from, to), null, { security, outline });
+          const bytes = await finishWithQpdf(getQpdf, raw, core.post);
+          core.post = null;
+          (core.warnings ?? []).forEach((w) => warnings.add(w));
+          await new Promise((r) => setTimeout(r, 0)); // deja pasar «cancelar»
+          return bytes;
+        };
+        const groups = await groupsBySize(args.refs.length, args.max, sizeOf, { isCancelled: () => cancelled.has(id), onProgress: progress(id) });
+        result = { groups, warnings: [...warnings] };
+        transfer = [...new Set(groups.map((g) => g.bytes.buffer))];
+        break;
+      }
       case 'setProtection':
         // Las contraseñas nuevas se quedan aquí hasta guardar; la interfaz solo conserva el identificador.
         result = keepProtection(args);
         break;
       case 'dropProtection':
         protections.delete(args.token);
+        break;
+      case 'sourceBytes': // pasar una pestaña a otra ventana: el PDF tal como se abrió
+        result = core.sourceBytes(args.docId);
+        transfer = [result.buffer];
         break;
       case 'close':
         core.close(args.docId);

@@ -7,7 +7,7 @@ import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
-import { tempDir, copyFixture, launch, toolbarButton, engine } from './helpers.mjs';
+import { tempDir, copyFixture, launch, launchMerged, toolbarButton, engine } from './helpers.mjs';
 
 const dialog = (win) => win.getByRole('dialog', { name: 'Compartir' });
 const target = (win, name) => dialog(win).getByRole('group', { name: 'Destino' }).getByRole('button', { name: new RegExp(`^${name}`) });
@@ -87,7 +87,7 @@ test('sin cambios: copiar el archivo (el original tal cual), Explorador, WhatsAp
 test('con cambios: solo la selección, sin información oculta y nombre propio; WhatsApp sin instalar abre la web', async () => {
   const dir = await tempDir();
   const file = await copyFixture(dir, 'formulario.pdf');
-  const { app, win } = await launch(dir, [file, await copyFixture(dir, 'contrato.pdf')]);
+  const { app, win } = await launchMerged(dir, [file, await copyFixture(dir, 'contrato.pdf')]);
   await hookShare(app, { installed: [] });
   // Dos PDF unidos (sin archivo propio); se seleccionan las páginas 2 y 3 y se gira la 2.
   const thumbs = win.locator('main ul > li');

@@ -29,6 +29,7 @@ export function menuModel({ dev = false, web = false, recents = [] } = {}) {
   return MENU.map((menu) => {
     const items = menu.items
       .filter((it) => (it === '-' || !it.dev || dev) && !(web && it.role) && !(web && it.submenu === 'recents'))
+      .filter((it) => it === '-' || (isMac() ? !it.mac?.hidden : !it.macOnly)) // macOS: Preferencias va en el menú de la app; Cortar/Pegar solo allí
       .map((it) => {
         if (it === '-' || it.sep) return { sep: true };
         if (it.submenu === 'recents') return { label: menuLabel(it.label), items: recentItems(recents) };
@@ -48,7 +49,7 @@ export function formatAccel(accel) {
   const names = mac
     ? { CmdOrCtrl: '⌘', Cmd: '⌘', Ctrl: '⌃', Shift: '⇧', Alt: '⌥', Plus: '+' }
     : { CmdOrCtrl: 'Ctrl', Cmd: 'Ctrl', Ctrl: 'Ctrl', Shift: t('key.shift'), Alt: 'Alt', Plus: '+' };
-  const parts = splitAccel(accel).map((p) => names[p] ?? p.toUpperCase());
+  const parts = splitAccel(accel).map((p) => names[p] ?? (p.length === 1 ? p.toUpperCase() : p)); // «Tab», «F5»
   return parts.join(mac ? '' : '+');
 }
 

@@ -3,12 +3,12 @@ import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import ExcelJS from 'exceljs';
-import { tempDir, copyFixture, launch, stubSaveAs } from './helpers.mjs';
+import { tempDir, copyFixture, launch, launchMerged, stubSaveAs } from './helpers.mjs';
 
 test('factura y albarán: vista previa, opciones, libro con números y fechas reales, abrir en Excel', async () => {
   const dir = await tempDir();
   const files = [await copyFixture(dir, 'factura.pdf'), await copyFixture(dir, 'albaran-lineas.pdf')];
-  const { app, win, errors } = await launch(dir, files);
+  const { app, win, errors } = await launchMerged(dir, files); // un solo documento con los dos PDF
   await app.evaluate(() => { globalThis.__opened = []; globalThis.__spiderPdfOpenPathHook = async (p) => { globalThis.__opened.push(p); return ''; }; });
 
   // Desde el botón «Exportar» de la barra: Word arriba y Excel debajo.

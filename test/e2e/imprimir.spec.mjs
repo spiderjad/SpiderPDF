@@ -5,7 +5,7 @@ import { test, expect } from '@playwright/test';
 import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
-import { tempDir, copyFixture, launch, footer, engine } from './helpers.mjs';
+import { tempDir, copyFixture, launch, launchMerged, footer, engine } from './helpers.mjs';
 import { PAPERS, sheetLayout } from '../../src/printLayout.js';
 
 const PRINTERS = [
@@ -46,7 +46,7 @@ const dialog = (win) => win.getByRole('dialog', { name: 'Imprimir' });
 test('el diálogo propio: vista previa, impresora, copias, color, doble cara; hojas A4 con las apaisadas giradas y sin recortes', async () => {
   const dir = await tempDir();
   // contrato (5 verticales) + anexo (2 apaisadas), unidos.
-  const { app, win, errors } = await launch(dir, [await copyFixture(dir, 'contrato.pdf'), await copyFixture(dir, 'anexo.pdf')]);
+  const { app, win, errors } = await launchMerged(dir, [await copyFixture(dir, 'contrato.pdf'), await copyFixture(dir, 'anexo.pdf')]);
   await hookPrint(app);
   expect(await app.evaluate(({ app: a }) => a.getName())).toBe('SpiderPDF');
 
@@ -137,7 +137,7 @@ test('el diálogo propio: vista previa, impresora, copias, color, doble cara; ho
 
 test('intervalo «2, 6-7», selección preelegida y «Configuración avanzada» con el diálogo del sistema', async () => {
   const dir = await tempDir();
-  const { app, win } = await launch(dir, [await copyFixture(dir, 'contrato.pdf'), await copyFixture(dir, 'anexo.pdf')]);
+  const { app, win } = await launchMerged(dir, [await copyFixture(dir, 'contrato.pdf'), await copyFixture(dir, 'anexo.pdf')]);
   await hookPrint(app);
 
   // Con selección, el intervalo empieza en «Selección».

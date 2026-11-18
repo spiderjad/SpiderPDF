@@ -2,6 +2,7 @@ import { useId, useRef, useState } from 'react';
 import { CircleAlert, CircleCheck, Copy, FolderOpen, LoaderCircle, Mail, MessageCircle, Share2, Sparkles, TriangleAlert } from 'lucide-react';
 import { useModal } from './PasswordDialog.jsx';
 import { useT } from '../i18n/index.js';
+import { desktop } from '../desktop.js';
 
 // label y hint son claves de traducción (se traducen al pintar).
 export const SHARE_TARGETS = [
@@ -10,6 +11,8 @@ export const SHARE_TARGETS = [
   { id: 'mail', label: 'dialogs.share.mail', hint: 'dialogs.share.mailHint', icon: Mail },
   { id: 'copy', label: 'dialogs.share.copy', hint: 'dialogs.share.copyHint', icon: Copy },
   { id: 'reveal', label: 'dialogs.share.reveal', hint: 'dialogs.share.revealHint', icon: FolderOpen },
+  // macOS: el menú Compartir del sistema (AirDrop, Mensajes, Mail, Notas…).
+  { id: 'system', label: 'dialogs.share.system', hint: 'dialogs.share.systemHint', icon: Share2, mac: true },
 ];
 
 /**
@@ -104,7 +107,7 @@ export default function ShareDialog({ name: initialName, total, selected, notice
           )}
 
           <div role="group" aria-label={t('dialogs.share.target')} className="grid grid-cols-2 gap-2 [&>button:last-child:nth-child(odd)]:col-span-2">
-            {SHARE_TARGETS.map(({ id, label, hint, icon: Icon }) => (
+            {SHARE_TARGETS.filter((x) => !x.mac || desktop.platform === 'darwin').map(({ id, label, hint, icon: Icon }) => (
               <button
                 key={id}
                 type="button"

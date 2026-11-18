@@ -9,7 +9,7 @@
  */
 import { t } from './i18n/index.js';
 
-export const DESKTOP_API = 9;
+export const DESKTOP_API = 12;
 
 let webShare = null;
 const web = {
@@ -105,6 +105,21 @@ const web = {
   onMenu() { return () => {}; },
   menuRole() {},
   onFiles() { return () => {}; },
+  // Pestañas en el navegador: una sola ventana, sin sesión (no hay rutas de archivo).
+  reportTabs() {},
+  onActivateTab() { return () => {}; },
+  detachTab: undefined, // no hay otras ventanas: «Mover a una ventana nueva» queda desactivado
+  async pendingTab() { return null; },
+  tabAdopted() {},
+  async restoreSession() { return null; },
+  // Dividir en el navegador: cada archivo se descarga (no hay carpetas).
+  async filesExist() { return []; },
+  async revealFile() { return { ok: false }; },
+  // Actualizaciones: solo en la app instalada para Windows.
+  async updateState() { return { status: 'unsupported' }; },
+  async updateCheck() { return { status: 'unsupported' }; },
+  async updateInstall() { return { ok: false }; },
+  onUpdate() { return () => {}; },
 };
 
 const webPrintJobs = new Map();

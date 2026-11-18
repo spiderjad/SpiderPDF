@@ -2015,6 +2015,15 @@ export class PdfCore {
     }
   }
 
+  /**
+   * Bytes del PDF tal como se abrió (PDFium trabaja sobre esta copia en memoria; nunca se modifica). Para pasar
+   * una pestaña a otra ventana sin volver a leer el disco, donde el archivo puede haber cambiado o no existir.
+   */
+  sourceBytes(docId) {
+    const d = this.entry(docId);
+    return this.heap().slice(d.ptr, d.ptr + d.size);
+  }
+
   close(docId) {
     const d = this.docs.get(docId);
     if (!d) return;

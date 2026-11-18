@@ -1,0 +1,52 @@
+/*
+ * Dividir PDF (src/components/SplitDialog.jsx). Prefijo dv-.
+ * La ventana es v-dialog de spider-ui; aquí solo la disposición de los modos, la carpeta y la vista previa.
+ * spider-ui se carga después que este archivo (main.jsx): lo que cambia medidas de v-input, v-help o v-error va con
+ * .dv-mode delante para pesar más.
+ */
+
+.dv-dialog { width: 580px; }
+
+.dv-modes { border: 0; padding: 0; margin: 0 0 16px; min-width: 0; }
+.dv-mode {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 6px 10px;
+  border: 1px solid var(--sp-border);
+  border-radius: var(--sp-radius);
+  font-size: 14px;
+}
+.dv-mode + .dv-mode { margin-top: 6px; }
+.dv-mode[data-checked] { border-color: var(--sp-text-primary); }
+.dv-mode[aria-disabled="true"] { color: var(--sp-text-tertiary); }
+.dv-mode > input[type="radio"] { margin: 0; accent-color: var(--sp-text-primary); }
+.dv-mode > input[type="radio"]:focus-visible { outline: 2px solid var(--sp-focus); outline-offset: 2px; }
+.dv-mode > label { cursor: pointer; }
+.dv-mode[aria-disabled="true"] > label { cursor: default; }
+.dv-mode .dv-num { width: 72px; flex: none; height: 30px; text-align: right; }
+.dv-mode .dv-wide { width: auto; flex: 1; min-width: 160px; height: 30px; }
+.dv-unit { color: var(--sp-text-secondary); }
+.dv-mode .dv-note { flex-basis: 100%; margin: 0 0 2px 24px; }
+
+.dv-row { display: flex; gap: 8px; }
+.dv-path { flex: 1; min-width: 0; text-overflow: ellipsis; }
+.dv-vars { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.dv-vars code { font-family: var(--sp-font-mono); font-size: 12px; color: var(--sp-text-primary); }
+
+.dv-preview { margin-top: 16px; }
+.dv-preview__head { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; font-size: 14px; font-weight: 500; }
+.dv-preview .v-table td, .dv-preview .v-table th { padding: 7px 10px; }
+.dv-preview .v-table td:first-child { word-break: break-all; }
+.dv-preview .v-table td:not(:first-child), .dv-preview .v-table th:not(:first-child) { white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; }
+.dv-more { margin: 6px 0 0; font-size: 12px; color: var(--sp-text-secondary); }
+.dv-tag { margin-left: 6px; }
+.dv-notices { display: grid; gap: 6px; margin-top: 12px; }
+.dv-status { display: flex; align-items: center; gap: 8px; color: var(--sp-text-secondary); font-size: 13px; }
+
+@media (max-width: 480px) {
+  .dv-row { flex-wrap: wrap; }
+  .dv-path { flex-basis: 100%; }
+}

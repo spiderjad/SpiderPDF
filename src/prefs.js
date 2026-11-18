@@ -6,11 +6,14 @@
 //     carpeta del PDF original, como antes.
 //   quality: nivel de «Reducir tamaño» que sale elegido al abrirlo (claves de REDUCE_LEVELS).
 //   lang: idioma de la interfaz: 'auto' (el del sistema), 'es', 'en' o 'ca' (src/i18n).
+//   restoreTabs: al abrir la app, volver a abrir las pestañas (y ventanas) de la última vez. Desactivado por defecto:
+//     abrir un PDF con doble clic no debe traer también los de ayer.
+//   autoUpdate: buscar actualizaciones al abrir la app (activado por defecto; se pueden buscar a mano igualmente).
 import { REDUCE_LEVELS } from './reduce.js';
 
 const STORE = 'spiderpdf:prefs';
 export const NAME_MAX = 80;
-export const DEFAULT_PREFS = { ai: 'claude', userName: '', outputDir: '', quality: 'balanced', lang: 'auto' };
+export const DEFAULT_PREFS = { ai: 'claude', userName: '', outputDir: '', quality: 'balanced', lang: 'auto', restoreTabs: false, autoUpdate: true };
 const LANG_PREFS = new Set(['auto', 'es', 'en', 'ca']);
 const AI = new Set(['claude', 'chatgpt']);
 
@@ -23,6 +26,8 @@ export function normalizePrefs(p) {
     outputDir: text(p?.outputDir, 1024),
     quality: Object.hasOwn(REDUCE_LEVELS, p?.quality ?? '') ? p.quality : DEFAULT_PREFS.quality,
     lang: LANG_PREFS.has(p?.lang) ? p.lang : DEFAULT_PREFS.lang,
+    restoreTabs: p?.restoreTabs === true,
+    autoUpdate: p?.autoUpdate !== false,
   };
 }
 

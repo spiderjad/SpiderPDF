@@ -1,7 +1,9 @@
 // Compartir (proceso principal): la copia que se comparte vive en una carpeta temporal propia que se borra al cerrar
 // la app (y al arrancar, las que quedaran de una ejecución anterior). La interfaz solo maneja identificadores: las
 // órdenes (copiar, correo, Explorador, WhatsApp) actúan sobre archivos que se prepararon aquí, nunca sobre una ruta
-// cualquiera. Las órdenes nativas (portapapeles como archivo, correo MAPI) las hace el ayudante en C#.
+// cualquiera. Las órdenes nativas (portapapeles como archivo, correo MAPI) las hace el ayudante en C# en Windows; en
+// macOS, el portapapeles de Electron (como archivo, igual que «Copiar» en el Finder), `open -a` con el programa de
+// correo y el menú Compartir del sistema (ShareMenu: AirDrop, Mensajes, Mail…).
 const { execFile } = require('node:child_process');
 const fsSync = require('node:fs');
 const fs = require('node:fs/promises');
@@ -47,7 +49,49 @@ function runHelper(app, args, { timeout = 0 } = {}) {
   });
 }
 
-function createShare({ app, shell, log = () => {} }) {
+/**
+ * Órdenes nativas de macOS. clipboard y ShareMenu vienen de Electron; run(cmd, args) ejecuta un programa (open).
+ * → { copyFile(f), mail(f), system(f, win) } con las mismas respuestas que el ayudante de Windows.
+ */
+function macNative({ app, clipboard, ShareMenu, run }) {
+  const xml = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  return {
+    copyFile(f) {
+      try {
+        // Como el Finder: la ruta en la lista de archivos (NSFilenamesPboardType) y como URL de archivo.
+        clipboard.writeBuffer('NSFilenamesPboardType', Buffer.from(
+          `<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><array><string>${xml(f)}</string></array></plist>`,
+        ));
+        clipboard.writeBuffer('public.file-url', Buffer.from(`file://${encodeURI(f)}`));
+        return { ok: true };
+      } catch (e) {
+        return { ok: false, code: 'portapapeles', message: e.message };
+      }
+    },
+    // El programa de correo predeterminado (Mail, Outlook…) abre un mensaje nuevo con el PDF adjunto.
+    async mail(f) {
+      const client = app.getApplicationNameForProtocol('mailto:');
+      if (!client) return { ok: false, code: 'sin-cliente' };
+      const name = client.replace(/\.app$/i, '').split('/').pop();
+      const r = await run('open', ['-a', name, f]);
+      return r.ok ? { ok: true } : { ok: false, code: 'sin-cliente', message: r.message };
+    },
+    system(f, win) {
+      if (!ShareMenu) return { ok: false, code: 'no-disponible' };
+      new ShareMenu({ filePaths: [f] }).popup({ window: win });
+      return { ok: true };
+    },
+  };
+}
+
+const runProgram = (cmd, args) => new Promise((resolve) => {
+  execFile(cmd, args, { timeout: 20_000 }, (err) => resolve(err ? { ok: false, message: err.message } : { ok: true }));
+});
+
+function createShare({ app, shell, log = () => {}, platform = process.platform, clipboard, ShareMenu, run = runProgram }) {
+  const mac = platform === 'darwin' ? macNative({ app, clipboard, ShareMenu, run }) : null;
+  // Copiar el archivo al portapapeles: el ayudante en Windows; Electron en macOS.
+  const copyNative = (f) => (mac ? mac.copyFile(f) : runHelper(app, ['copy-file', f], { timeout: 20_000 }));
   const root = path.join(os.tmpdir(), `${PREFIX}${process.pid}`);
   const files = new Map(); // id → ruta
   let seq = 0;
@@ -90,14 +134,16 @@ function createShare({ app, shell, log = () => {} }) {
       log('compartir: preparado', id, path.basename(target));
       return { id, name: path.basename(target), size: (await fs.stat(target)).size };
     },
-    copyFile: (id) => runHelper(app, ['copy-file', file(id)], { timeout: 20_000 }),
+    copyFile: async (id) => copyNative(file(id)),
     // Sin límite de tiempo: según el cliente, la orden no vuelve hasta que se envía o se cierra el correo.
-    mail: (id, subject) => runHelper(app, ['mail', file(id), String(subject ?? '')]),
+    mail: async (id, subject) => (mac ? mac.mail(file(id)) : runHelper(app, ['mail', file(id), String(subject ?? '')])),
+    /** Menú Compartir de macOS junto a la ventana (en Windows no existe). */
+    system: (id, win) => (mac ? mac.system(file(id), win) : { ok: false, code: 'no-disponible' }),
     reveal(id) { shell.showItemInFolder(file(id)); return { ok: true }; },
     /** WhatsApp: el archivo al portapapeles y la app de escritorio (o la web, si no está instalada). */
     async whatsapp(id) {
       const f = file(id);
-      const copied = await runHelper(app, ['copy-file', f], { timeout: 20_000 });
+      const copied = await copyNative(f);
       const desktop = !!app.getApplicationNameForProtocol('whatsapp://');
       if (desktop) {
         await shell.openExternal('whatsapp://');
@@ -110,7 +156,7 @@ function createShare({ app, shell, log = () => {} }) {
     /** Enviar a IA: el archivo al portapapeles y la app de escritorio de esa IA (o su web, si no está instalada). */
     async ai(id, provider) {
       const p = AI[provider] ?? AI.claude;
-      const copied = await runHelper(app, ['copy-file', file(id)], { timeout: 20_000 });
+      const copied = await copyNative(file(id));
       const desktop = !!app.getApplicationNameForProtocol(p.protocol);
       await shell.openExternal(desktop ? p.protocol : p.web);
       return { ok: true, desktop, copied: !!copied.ok, provider: provider in AI ? provider : 'claude' };
@@ -122,4 +168,4 @@ function createShare({ app, shell, log = () => {} }) {
   };
 }
 
-module.exports = { createShare, safeName, runHelper, helperPath };
+module.exports = { createShare, safeName, runHelper, helperPath, macNative };

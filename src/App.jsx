@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { FilePlus2, FolderOpen, CircleCheck, CircleAlert, FileText, LoaderCircle, LockKeyhole, ScanText, X } from 'lucide-react';
 import { useDelayed } from './useDelayed.js';
-import { reducer, initialState, pagesFrom, targetKeys } from './state.js';
+import { pagesFrom, targetKeys } from './state.js';
+import { tabsReducer, initialTabs, activeTab, tabById, isBlank, dirtyTabs, findTabByPath, cycleTab, sessionOf, snapshotDoc, restoreDoc, newTabId } from './tabs.js';
+import TabBar from './components/TabBar.jsx';
 import { rectFromDisplay, fromDisplay } from './geometry.js';
 import { nearestRun, defaultStyle, FAMILIES, LINE_HEIGHT } from './textbox.js';
 import { newAnnotId } from './state.js';
@@ -27,6 +29,9 @@ import ReduceDialog from './components/ReduceDialog.jsx';
 import TocDialog from './components/TocDialog.jsx';
 import ExcelDialog from './components/ExcelDialog.jsx';
 import WordDialog from './components/WordDialog.jsx';
+import SplitDialog from './components/SplitDialog.jsx';
+import { firstPos } from './split.js';
+import { mapOutline, mapCustomOutline } from './outline.js';
 import { sizeChange } from './reduce.js';
 import { hasRedactions, dirOf, joinPath, samePath } from './savePlan.js';
 import { sharePlan, shareName, shareResult, AI_PROVIDERS } from './share.js';
@@ -51,9 +56,15 @@ import { selectedText } from './textGeom.js';
 import { t, useT, setLang, resolveLang, getLang } from './i18n/index.js';
 
 /** Acciones que chocan con una tarea en curso (abrir, guardar…): se ignoran mientras dure. */
-const BLOCKED_WHILE_BUSY = new Set(['exportExcel', 'exportWord', 'reduce', 'share', 'protect', 'unprotect', 'unlock', 'new', 'ocr', 'open', 'openRecent', 'print', 'add','insertBlank', 'insertImage', 'save', 'saveAs', 'extract', 'delete', 'rotateLeft', 'rotateRight', 'undo', 'redo', 'selectAll']);
+// Cambiar, cerrar o mover pestañas también: la tarea es de la pestaña en la que empezó.
+const BLOCKED_WHILE_BUSY = new Set(['exportExcel', 'exportWord', 'reduce', 'share', 'protect', 'unprotect', 'unlock', 'new', 'ocr', 'open', 'openRecent', 'print', 'add', 'insertBlank', 'insertImage', 'save', 'saveAs', 'extract', 'split', 'delete', 'rotateLeft', 'rotateRight', 'undo', 'redo', 'selectAll', 'newTab', 'closeTab', 'nextTab', 'prevTab', 'detachTab']);
 
 const ZOOM_STEPS = [0.25, 0.5, 0.67, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4];
+/** ¿El foco está en un campo de texto (input, textarea o editable)? */
+const isEditing = () => {
+  const el = document.activeElement;
+  return !!el && (el.isContentEditable || el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && !['checkbox', 'radio', 'button', 'range', 'file'].includes(el.type)));
+};
 const isPdf = (f) => f.type === 'application/pdf' || /\.pdf$/i.test(f.name);
 const baseName = (name) => name.replace(/\.pdf$/i, '');
 
@@ -64,10 +75,19 @@ const systemLanguages = () => [...(globalThis.navigator?.languages ?? [globalThi
 
 export default function App() {
   useT(); // vuelve a pintar todo al cambiar de idioma (Preferencias → Idioma)
-  const [state, dispatch] = useReducer(reducer, initialState);
+  // Pestañas (src/tabs.js): root = { tabs: [{ id, doc }], active }. state es el documento de la pestaña activa y
+  // dispatch le manda las acciones (o a la pestaña a.tab: las tareas que esperan anotan la suya al empezar).
+  const [root, dispatch] = useReducer(tabsReducer, undefined, initialTabs);
+  const rootRef = useRef(root);
+  rootRef.current = root;
+  const tab = activeTab(root);
+  const tabId = tab.id;
+  const state = tab.doc;
   const stateRef = useRef(state);
   const prefsRef = useRef(null); // preferencias (se asigna al leerlas, más abajo): para las funciones de guardar y exportar
   stateRef.current = state;
+  /** Documento de una pestaña, ahora (o null si se cerró). */
+  const docOf = (id) => tabById(rootRef.current, id)?.doc ?? null;
   const readerRef = useRef(null);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState(null);
@@ -183,9 +203,11 @@ export default function App() {
   }, [notify]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- Cargar archivos -----------------------------------------------------
+  /** Abre en el motor una lista de archivos. → { sources, pages (todas juntas), items: [{ entry, src, pages }], cancelled } */
   async function load(entries) {
     const sources = [];
     const pages = [];
+    const items = [];
     const errors = [];
     let cancelled = false;
     cancelOpen.current = null;
@@ -223,7 +245,9 @@ export default function App() {
         const src = { docId, name: baseName(e.name), path: e.path, hasForm, signed, mdp, security, pageCount: sizes.length, size: e.bytes.length };
         if (signed > 0) verifySource(docId, e.bytes);
         sources.push(src);
-        pages.push(...pagesFrom(src, sizes));
+        const own = pagesFrom(src, sizes);
+        pages.push(...own);
+        items.push({ entry: e, src, pages: own });
       } catch (err) {
         if (err.cancelled) { cancelled = true; break; }
         errors.push(`«${e.name}»: ${err.message}`);
@@ -234,44 +258,172 @@ export default function App() {
     if (cancelled) {
       sources.forEach((src) => pdf.close(src.docId));
       notify(t('core.open.cancelled'));
-      return { sources: [], pages: [], cancelled: true };
+      return { sources: [], pages: [], items: [], cancelled: true };
     }
     if (errors.length) notify(errors.join(' '), 'error');
-    return { sources, pages };
+    return { sources, pages, items };
   }
 
+  /**
+   * Abre PDFs, cada uno en su pestaña (la activa si está vacía; si no, una nueva a su derecha, que queda activa).
+   * Uno que ya está abierto en una pestaña no se abre otra vez: se pasa a esa pestaña.
+   * → [{ path, id }]: la pestaña de cada archivo (para recuperar la sesión).
+   */
   async function openEntries(entries) {
-    if (!entries?.length) return;
-    const s = stateRef.current;
-    if (s.dirty && s.pages.length) {
-      const ok = await ask({
-        title: t('core.unsaved.title'),
-        message: t('core.unsaved.openMessage'),
-        actions: [{ id: 'open', label: t('core.unsaved.openAnyway'), kind: 'danger' }],
-      });
-      if (!ok) return;
+    if (!entries?.length) return [];
+    const result = [];
+    const fresh = [];
+    for (const e of entries) {
+      if (e.path && fresh.some((x) => x.path && samePath(x.path, e.path))) continue;
+      const open = !e.error && findTabByPath(rootRef.current, e.path);
+      if (open) result.push({ path: e.path, id: open.id, already: true });
+      else fresh.push(e);
+    }
+    const already = result.at(-1);
+    if (!fresh.length) {
+      if (already) {
+        if (!busyRef.current) dispatch({ type: 'tabActivate', id: already.id });
+        notify(t('core.tabs.alreadyOpen', { name: tabById(rootRef.current, already.id)?.doc.file?.name ?? '' }));
+      }
+      return result;
     }
     setBusy(true);
     try {
-      const { sources, pages } = await load(entries);
-      if (!sources.length) return;
-      s.sources.forEach((src) => pdf.close(src.docId));
-      const single = entries.length === 1 && entries[0].path;
-      dispatch({ type: 'open', sources, pages, file: single ? { path: entries[0].path, name: entries[0].name } : null });
+      const { items } = await load(fresh);
+      if (!items.length) {
+        if (already) dispatch({ type: 'tabActivate', id: already.id });
+        return result;
+      }
+      // Solo el primero puede ir a la pestaña activa (si está vacía); el resto, a pestañas nuevas.
+      const into = rootRef.current.active;
+      const reuse = isBlank(activeTab(rootRef.current).doc);
+      items.forEach((it, i) => {
+        const id = newTabId();
+        const here = i === 0 && reuse;
+        dispatch({ type: 'tabOpen', id, into, newTab: !here, sources: [it.src], pages: it.pages, file: it.entry.path ? { path: it.entry.path, name: it.entry.name } : null });
+        result.push({ path: it.entry.path, id: here ? into : id });
+      });
       setTool('select');
-      rememberRecent(sources);
-      const certified = editPolicy(sources);
-      if (certified.notice) notify(certified.notice);
-      else if (sources.length > 1) notify(t('core.open.merged', { count: sources.length }));
+      rememberRecent(items.map((it) => it.src));
+      const notice = items.map((it) => editPolicy([it.src]).notice).filter(Boolean).at(-1);
+      if (notice) notify(notice);
     } finally {
       setBusy(false);
     }
+    return result;
+  }
+
+  /** PDFs soltados sobre la barra de pestañas: cada uno en su pestaña. */
+  async function openDropped(fileList) {
+    const files = [...fileList].filter(isPdf);
+    if (!files.length) { if (fileList.length) notify(t('core.add.onlyPdf'), 'error'); return; }
+    await openEntries(await Promise.all(files.map(fileToEntry)));
+  }
+
+  // --- Pestañas ----------------------------------------------------------------------
+  /** Libera en el motor lo de un documento que se cierra (sus PDF y la protección pendiente). */
+  function releaseDoc(doc) {
+    for (const src of doc.sources) pdf.close(src.docId).catch(() => {});
+    if (doc.security?.token) pdf.dropProtection(doc.security.token).catch(() => {});
+  }
+
+  /** Cerrar una pestaña; con cambios sin guardar, pregunta (Guardar / Cerrar sin guardar). */
+  async function closeTab(id = rootRef.current.active) {
+    if (busyRef.current) return;
+    const doc = docOf(id);
+    if (!doc) return;
+    if (doc.dirty && doc.pages.length) {
+      if (rootRef.current.active !== id) dispatch({ type: 'tabActivate', id });
+      const name = doc.file?.name ?? t('core.app.untitled');
+      const choice = await ask({
+        title: t('core.tabs.closeTitle', { name }),
+        message: t('core.tabs.closeMessage'),
+        actions: [{ id: 'save', label: t('core.common.save'), kind: 'primary' }, { id: 'discard', label: t('core.tabs.discard'), kind: 'danger' }],
+      });
+      if (!choice) return;
+      if (choice === 'save') {
+        if (!(await save())) return;
+        // Lo guardado llega al estado en el siguiente pintado: hasta entonces la pestaña aún figura con cambios.
+        for (let i = 0; i < 60 && docOf(id)?.dirty; i++) await new Promise((r) => setTimeout(r, 16));
+        const after = docOf(id);
+        if (!after || (after.dirty && after.pages.length)) return;
+      }
+    }
+    const last = docOf(id);
+    if (!last) return;
+    releaseDoc(last);
+    dispatch({ type: 'tabClose', id });
+  }
+
+  /**
+   * Pasa una pestaña a una ventana nueva (arrastrarla fuera de la barra, o Ver → Mover la pestaña…). La ventana
+   * nueva vuelve a abrir sus PDF (los bytes tal como se abrieron, del motor) y el documento con sus cambios, sin el
+   * historial de deshacer. Hasta que la otra ventana confirma, la pestaña se queda aquí: si algo falla, no se pierde.
+   */
+  async function detachTab(id = rootRef.current.active, point = null) {
+    if (busyRef.current || rootRef.current.tabs.length < 2) return;
+    if (typeof desktop.detachTab !== 'function') { notify(t('core.app.outdated'), 'error'); return; }
+    const doc = docOf(id);
+    if (!doc) return;
+    if (doc.security?.kind === 'set') { notify(t('core.tabs.detachProtect'), 'error'); return; }
+    setBusy(true);
+    try {
+      const used = new Set(doc.pages.map((p) => p.docId));
+      const sources = await Promise.all(doc.sources.filter((src) => used.has(src.docId)).map(async (src) => ({
+        docId: src.docId, name: src.name, path: src.path ?? null, bytes: await pdf.sourceBytes(src.docId),
+      })));
+      const where = point ?? { x: window.screenX + 80, y: window.screenY + 80 };
+      const res = await desktop.detachTab({ doc: await snapshotDoc(doc), sources }, where);
+      if (res?.ok) {
+        releaseDoc(doc);
+        dispatch({ type: 'tabClose', id });
+      } else notify(t('core.tabs.detachFailed'), 'error');
+    } catch (e) {
+      notify(t('core.tabs.detachFailedWhy', { error: e?.message ?? e }), 'error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Ventana abierta para recibir una pestaña de otra: abre sus PDF y monta el documento. */
+  async function adoptTab(snap) {
+    let ok = false;
+    setBusy(true);
+    try {
+      const entries = snap.sources.map((src) => ({ name: `${src.name}.pdf`, path: src.path, bytes: src.bytes, from: src.docId }));
+      const { items, cancelled } = await load(entries);
+      if (!cancelled && items.length === entries.length) {
+        const docIds = new Map(items.map((it) => [it.entry.from, it.src.docId]));
+        dispatch({ type: 'tabAdopt', doc: restoreDoc(snap.doc, { docIds, sources: items.map((it) => it.src) }) });
+        ok = true;
+      } else {
+        items.forEach((it) => pdf.close(it.src.docId));
+      }
+    } catch (e) {
+      notify(t('core.tabs.detachFailedWhy', { error: e?.message ?? e }), 'error');
+    } finally {
+      setBusy(false);
+      desktop.tabAdopted?.(ok);
+    }
+    // Esta ventana se abrió solo para la pestaña: si no llegó (p. ej. se canceló la contraseña), se cierra.
+    if (!ok && rootRef.current.tabs.every((x) => isBlank(x.doc))) desktop.menuRole('close');
+  }
+
+  /** Preferencias → «Recordar las pestañas abiertas»: las de la última vez (las demás ventanas, en ventanas nuevas). */
+  async function restoreSession() {
+    const r = await Promise.resolve().then(() => desktop.restoreSession?.()).catch(() => null);
+    if (!r?.entries?.length) return;
+    const opened = await openEntries(r.entries);
+    const want = r.entries[r.active]?.path;
+    const hit = want && opened.find((o) => o.path && samePath(o.path, want));
+    if (hit) dispatch({ type: 'tabActivate', id: hit.id });
   }
 
   async function addEntries(entries, at) {
     if (!entries?.length) return;
     if (!stateRef.current.pages.length) return openEntries(entries);
     if (!policyRef.current.pages) { notify(policyRef.current.notice, 'error'); return; }
+    const tabNow = rootRef.current.active;
     setBusy(true);
     try {
       const loaded = await load(entries);
@@ -282,7 +434,7 @@ export default function App() {
       const sources = loaded.sources.filter((src) => !locked.includes(src));
       const pages = loaded.pages.filter((p) => sources.some((src) => src.docId === p.docId));
       if (!pages.length) return;
-      dispatch({ type: 'add', sources, pages, at });
+      dispatch({ type: 'add', sources, pages, at, tab: tabNow });
       rememberRecent(sources);
       notify(t('core.add.done', { count: pages.length }));
     } finally {
@@ -329,8 +481,11 @@ export default function App() {
   }
 
   // Marcar los elementos en conflicto y avisar cuando aparece uno nuevo (al colocarlo o moverlo encima).
+  const conflictTab = useRef(null);
   useEffect(() => {
     let alive = true;
+    const quiet = conflictTab.current !== tabId; // otra pestaña: lo que ya tenía no es nuevo
+    conflictTab.current = tabId;
     findConflicts(state.pages).then((list) => {
       if (!alive) return;
       const map = new Map();
@@ -345,14 +500,16 @@ export default function App() {
       }
       seenConflicts.current = now;
       setConflicts(map);
-      if (fresh) notify(conflictMessage(fresh.kind), 'error');
+      if (fresh && !quiet) notify(conflictMessage(fresh.kind), 'error');
     });
     return () => { alive = false; };
   }, [state.pages]);
 
   // --- Guardar ---------------------------------------------------------------
+  /** Guardar, Guardar como o Extraer. → true si se escribió el archivo. */
   async function save({ asNew = false, extract = false } = {}) {
     const s = stateRef.current;
+    const tabNow = rootRef.current.active;
     const list = extract ? s.pages.filter((p) => s.selected.has(p.key)) : s.pages;
     if (!list.length) {
       notify(extract ? t('core.save.selectFirst') : t('core.save.noPages'), 'error');
@@ -431,18 +588,20 @@ export default function App() {
         const { sources, pages } = await load([{ name: res.name, path: res.path, bytes, known }]);
         if (sources.length) {
           s.sources.forEach((src) => pdf.close(src.docId));
-          dispatch({ type: 'open', sources, pages, file: { path: res.path, name: res.name } });
+          dispatch({ type: 'open', sources, pages, file: { path: res.path, name: res.name }, tab: tabNow });
           setTool('select');
         }
-      } else if (!extract) dispatch({ type: 'saved', file: res });
+      } else if (!extract) dispatch({ type: 'saved', file: res, tab: tabNow });
       const done = extract
         ? t('core.save.extracted', { name: res.name, count: list.length })
         : plan.redacted ? t('core.save.redacted', { name: res.name })
           : incremental ? t('core.save.incremental', { name: res.name }) : t('core.save.done', { name: res.name });
       if (warnings?.length) notify(t('core.save.withWarnings', { done, warnings: warnings.join(' ') }), 'error');
       else notify(done);
+      return true;
     } catch (e) {
       notify(t('core.save.failed', { error: e.message }), 'error');
+      return false;
     } finally {
       setTask(null);
       setBusy(false);
@@ -452,20 +611,11 @@ export default function App() {
   // --- Nuevo documento (Ctrl+N) --------------------------------------------------------
   // Páginas en blanco que no vienen de ningún PDF; al guardar, compose() parte de un documento vacío.
   const [newOpen, setNewOpen] = useState(false);
-  async function createDocument(opts) {
+  function createDocument(opts) {
     setNewOpen(false);
-    const s = stateRef.current;
-    if (s.dirty && s.pages.length) {
-      const ok = await ask({
-        title: t('core.unsaved.title'),
-        message: t('core.unsaved.newMessage'),
-        actions: [{ id: 'new', label: t('core.unsaved.newAnyway'), kind: 'danger' }],
-      });
-      if (!ok) return;
-    }
-    s.sources.forEach((src) => pdf.close(src.docId));
     const pages = newDocumentPages(opts);
-    dispatch({ type: 'open', sources: [], pages, file: null });
+    // En la pestaña activa si está vacía; si no, en una nueva (el documento que había sigue en la suya).
+    dispatch({ type: 'tabOpen', sources: [], pages, file: null });
     dispatch({ type: 'mode', mode: 'read' });
     setTool('select');
     notify(t('core.new.done', { count: pages.length }));
@@ -497,6 +647,7 @@ export default function App() {
     setOcrOpen(false);
     const list = (scope === 'scanned' ? ocrPending : ocrTargets).map((p) => p.key);
     if (!list.length) return;
+    const tabNow = rootRef.current.active;
     const job = { id: Date.now(), cancelled: false };
     ocrJob.current = job;
     setBusy(true);
@@ -510,8 +661,8 @@ export default function App() {
       setTask((t) => (t ? { ...t, loading: false } : t));
       for (const key of list) {
         if (job.cancelled) break;
-        const page = stateRef.current.pages.find((p) => p.key === key);
-        if (!page) { done++; continue; } // se eliminó mientras tanto
+        const page = docOf(tabNow)?.pages.find((p) => p.key === key);
+        if (!page) { done++; continue; } // se eliminó mientras tanto (o se cerró la pestaña)
         const gray = await pdf.ocrGray(page.docId, page.index, OCR_DPI);
         const res = await ocrPage(gray, { dpi: gray.dpi, R: page.rot0, recognize: recognizer.recognize, isCancelled: () => job.cancelled });
         let words = res.words;
@@ -521,7 +672,7 @@ export default function App() {
           const odd = page.rot0 % 2 === 1;
           words = dropCovered(words, c.boxes, odd ? page.height : page.width, odd ? page.width : page.height);
         }
-        if (words.length) { dispatch({ type: 'setOcr', key, words, job: job.id }); found++; }
+        if (words.length) { dispatch({ type: 'setOcr', key, words, job: job.id, tab: tabNow }); found++; }
         done++;
         setTask((t) => (t ? { ...t, done } : t));
       }
@@ -588,10 +739,11 @@ export default function App() {
 
   async function protect(opts) {
     setProtectOpen(false);
+    const tabNow = rootRef.current.active;
     const old = stateRef.current.security?.token;
     const token = await pdf.setProtection(opts);
     if (old) pdf.dropProtection(old);
-    dispatch({ type: 'setSecurity', security: { kind: 'set', token, perms: opts.perms, separateOwner: opts.separateOwner } });
+    dispatch({ type: 'setSecurity', security: { kind: 'set', token, perms: opts.perms, separateOwner: opts.separateOwner }, tab: tabNow });
     notify(t('core.protect.set'));
   }
 
@@ -611,6 +763,12 @@ export default function App() {
   const [shareOpen, setShareOpen] = useState(false);
   const [prefs, setPrefs] = useState(loadPrefs);
   prefsRef.current = prefs;
+  // Otra ventana cambió las Preferencias (mismo almacenamiento): aquí también (idioma, recordar pestañas…).
+  useEffect(() => {
+    const onStorage = (e) => { if (e.key === 'spiderpdf:prefs') setPrefs(loadPrefs()); };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
   // Idioma (Preferencias → Idioma, o el del sistema): la interfaz ya lo tiene desde main.jsx; aquí se aplica al
   // cambiarlo y se avisa al motor (sus errores y avisos) y al proceso principal (diálogos nativos, menú de macOS).
   const lang = resolveLang(prefs.lang, systemLanguages());
@@ -640,7 +798,7 @@ export default function App() {
       id = res.id;
       prepared.current = { key, pages: s.pages, outline: s.outline, security: s.security, id };
     }
-    const call = { whatsapp: desktop.shareWhatsApp, ai: desktop.shareAi, mail: desktop.shareMail, copy: desktop.shareCopyFile, reveal: desktop.shareReveal }[target];
+    const call = { whatsapp: desktop.shareWhatsApp, ai: desktop.shareAi, mail: desktop.shareMail, copy: desktop.shareCopyFile, reveal: desktop.shareReveal, system: desktop.shareSystem }[target];
     if (typeof call !== 'function') return { ok: false, text: t('core.share.outdated') };
     const arg = target === 'mail' ? opts.name.replace(/\.pdf$/i, '') : target === 'ai' ? prefs.ai : undefined;
     const r = await call(id, arg);
@@ -679,6 +837,61 @@ export default function App() {
     if (res.path) rememberRecent([{ path: res.path }]);
     const before = !s.dirty && s.file && s.sources.length === 1 ? s.sources[0].size : null;
     notify(before ? t('core.reduce.savedChange', { name: res.name, change: sizeChange(before, bytes.length) }) : t('core.reduce.saved', { name: res.name }));
+  }
+
+  // --- Dividir PDF ---------------------------------------------------------------------
+  // El diálogo (SplitDialog) decide los grupos de páginas y los nombres; aquí se compone cada archivo (o se usan los
+  // bytes ya compuestos al calcular el tamaño máximo) y se escribe en la carpeta, con progreso y «Cancelar».
+  const [splitOpen, setSplitOpen] = useState(false);
+  function splitNotices(s) {
+    const out = [];
+    if (hasRedactions(s.pages)) out.push({ tone: 'danger', text: t('dialogs.split.noticeRedact') });
+    if (signedSources(s).length) out.push({ tone: 'info', text: t('dialogs.split.noticeSigned') });
+    if (willBeProtected(s)) out.push({ tone: 'info', text: t('dialogs.split.noticePassword') });
+    return out;
+  }
+  /** Marcadores de primer nivel con la posición actual de su página (el índice creado en la app manda). */
+  async function splitMarks() {
+    const s = stateRef.current;
+    if (s.outline) return mapCustomOutline(s.pages, s.outline).map((n) => ({ title: n.title, pos: firstPos(n) }));
+    const docs = [...new Set(s.pages.map((p) => p.docId).filter((d) => d != null))];
+    const trees = new Map(await Promise.all(docs.map(async (d) => [d, await pdf.bookmarks(d).catch(() => [])])));
+    const names = new Map(s.sources.map((src) => [src.docId, src.name]));
+    return mapOutline(s.pages, trees, names).map((n) => ({ title: n.title, pos: firstPos(n) }));
+  }
+  async function runSplit({ groups, names, targets, folder, warnings: found = [] }) {
+    setSplitOpen(false);
+    const s = stateRef.current;
+    const job = { cancelled: false };
+    const warnings = new Set(found);
+    let done = 0;
+    setBusy(true);
+    setTask({ kind: 'split', done: 0, total: groups.length, cancel: () => { job.cancelled = true; setTask((x) => (x ? { ...x, cancelling: true } : x)); } });
+    try {
+      for (const [i, g] of groups.entries()) {
+        if (job.cancelled) break;
+        let bytes = g.bytes;
+        if (!bytes) {
+          const r = await pdf.compose(s.pages.slice(g.from, g.to), null, { security: securityArg(s), outline: s.outline });
+          bytes = r.bytes;
+          (r.warnings ?? []).forEach((w) => warnings.add(w));
+        }
+        const res = await desktop.savePdf({ bytes, path: folder ? targets[i] : undefined, suggestedName: names[i] });
+        if (!res) break;
+        done++;
+        setTask((x) => (x ? { ...x, done } : x));
+      }
+      const where = folder.split(/[\\/]/).filter(Boolean).pop() ?? folder;
+      const text = folder ? t('core.split.done', { count: done, folder: where }) : t('core.split.downloaded', { count: done });
+      if (done < groups.length) notify(t('core.split.stopped', { done, total: groups.length }), done ? 'info' : 'error');
+      else if (warnings.size) notify(`${text} ${[...warnings].join(' ')}`, 'error');
+      else notify(text, 'info', folder && typeof desktop.revealFile === 'function' ? { label: t('core.split.reveal'), run: () => desktop.revealFile(targets[0]) } : null);
+    } catch (e) {
+      notify(done ? `${t('core.split.stopped', { done, total: groups.length })} ${t('core.split.failed', { error: e.message })}` : t('core.split.failed', { error: e.message }), 'error');
+    } finally {
+      setTask(null);
+      setBusy(false);
+    }
   }
 
   // --- Imprimir -------------------------------------------------------------------
@@ -766,6 +979,11 @@ export default function App() {
   // --- Comandos (menú, barra de herramientas y teclado) -----------------------
   function run(cmd, arg) {
     const s = stateRef.current;
+    // macOS: el menú nativo se queda con ⌘Z, ⇧⌘Z y ⌘A también cuando se escribe en un campo; ahí actúan sobre el texto.
+    if (['undo', 'redo', 'selectAll'].includes(cmd) && isEditing()) {
+      document.execCommand(cmd);
+      return;
+    }
     if (busyRef.current && BLOCKED_WHILE_BUSY.has(cmd)) return;
     const zoomStep = (dir) => {
       const next = dir > 0 ? ZOOM_STEPS.find((z) => z > s.zoom + 0.001) : [...ZOOM_STEPS].reverse().find((z) => z < s.zoom - 0.001);
@@ -804,6 +1022,16 @@ export default function App() {
         save({ extract: true });
         break;
       case 'new': setNewOpen(true); break;
+      case 'newTab': dispatch({ type: 'tabNew' }); break;
+      case 'closeTab': closeTab(); break;
+      case 'nextTab': dispatch({ type: 'tabActivate', id: cycleTab(rootRef.current, 1) }); break;
+      case 'prevTab': dispatch({ type: 'tabActivate', id: cycleTab(rootRef.current, -1) }); break;
+      case 'detachTab': detachTab(); break;
+      case 'split':
+        if (!s.pages.length) break;
+        if (!policyRef.current.pages) { notify(policyRef.current.notice, 'error'); break; }
+        setSplitOpen(true);
+        break;
       case 'ocr': if (ocrTargets.length) setOcrOpen(true); break;
       case 'print':
         if (!s.pages.length) break;
@@ -855,9 +1083,32 @@ export default function App() {
 
   // El menú nativo (macOS) manda un comando o { cmd, arg } (p. ej. abrir un reciente).
   useEffect(() => desktop.onMenu((m) => (typeof m === 'string' ? runRef.current(m) : runRef.current(m?.cmd, m?.arg))), []);
-  // PDFs abiertos desde el sistema (doble clic, "Abrir con…", icono del Dock).
+  // PDFs abiertos desde el sistema (doble clic, "Abrir con…", icono del Dock): cada uno en su pestaña.
   useEffect(() => desktop.onFiles((entries) => openRef.current(entries)), []);
-  useEffect(() => { desktop.pendingFiles().then((e) => openRef.current(e)); }, []);
+  // Un PDF que ya estaba abierto en esta ventana (lo pidió el Explorador u otra ventana): a su pestaña.
+  useEffect(() => desktop.onActivateTab?.((path) => {
+    const open = findTabByPath(rootRef.current, path);
+    if (open && !busyRef.current) dispatch({ type: 'tabActivate', id: open.id });
+  }) ?? undefined, []);
+  // Al arrancar: la pestaña que llega de otra ventana (esta se abrió para ella) o, si no, la sesión anterior
+  // (Preferencias → recordar pestañas) y los PDF con los que se abrió la app.
+  // Hasta terminar el arranque no se informa de las pestañas al proceso principal: unas pestañas aún vacías
+  // sobrescribirían la sesión guardada antes de leerla.
+  const [started, setStarted] = useState(false);
+  const startRef = useRef({ adoptTab, restoreSession });
+  startRef.current = { adoptTab, restoreSession };
+  useEffect(() => {
+    (async () => {
+      try {
+        const snap = await Promise.resolve().then(() => desktop.pendingTab?.()).catch(() => null);
+        if (snap) { await startRef.current.adoptTab(snap); return; }
+        if (prefsRef.current?.restoreTabs) await startRef.current.restoreSession();
+        await openRef.current(await desktop.pendingFiles());
+      } finally {
+        setStarted(true);
+      }
+    })();
+  }, []);
 
   // --- Texto nuevo (cuadros de texto) ---------------------------------------------
   // El cuadro que se escribe: { key, id }. Uno a la vez, en cualquier página.
@@ -1041,6 +1292,8 @@ export default function App() {
     rotateLeft: idle && hasTargetsNow && policy.pages, rotateRight: idle && hasTargetsNow && policy.pages,
     delete: idle && hasTargetsNow && (policy.pages || !!state.annotSel),
     new: idle, ocr: idle && ocrTargets.length > 0 && policy.content, print: idle && has && policy.print,
+    newTab: idle, closeTab: idle, nextTab: idle && root.tabs.length > 1, prevTab: idle && root.tabs.length > 1,
+    detachTab: idle && root.tabs.length > 1 && typeof desktop.detachTab === 'function', split: idle && has && policy.pages,
     share: idle && has, exportExcel: idle && has && policy.copy, exportWord: idle && has && policy.copy, reduce: idle && has && policy.content, protect: idle && has, unprotect: idle && has && willBeProtected(state),
     unlock: idle && state.sources.some((src) => src.security?.encrypted && !src.security.owner && !allAllowed(src.security.perms)), openRecent: idle, clearRecents: true, none: false,
     organize: has, read: has, zoomIn: has && state.mode === 'read', zoomOut: has && state.mode === 'read', zoomFit: has && state.mode === 'read',
@@ -1091,13 +1344,65 @@ export default function App() {
 
   // Título de ventana y aviso de cambios sin guardar al cerrar.
   const docName = state.file?.name ?? (state.pages.length ? t('core.app.untitled') : null);
+  const dirtyCount = dirtyTabs(root).length;
   useEffect(() => {
     desktop.setTitle(docName ? `${state.dirty && desktop.platform !== 'darwin' ? '● ' : ''}${docName} – SpiderPDF` : 'SpiderPDF');
-    desktop.setDirty(state.dirty);
   }, [docName, state.dirty]);
+  // El aviso al cerrar la ventana cuenta las pestañas con cambios (el proceso principal pregunta).
+  useEffect(() => { desktop.setDirty(dirtyCount); }, [dirtyCount]);
+  // Las pestañas con archivo, para el proceso principal: no abrir dos veces el mismo PDF y recordar la sesión.
+  const session = JSON.stringify(sessionOf(root));
+  useEffect(() => {
+    if (started) desktop.reportTabs?.({ ...JSON.parse(session), remember: !!prefs.restoreTabs });
+  }, [session, prefs.restoreTabs, started]);
+  // --- Actualizaciones (electron/updater.cjs): versiones nuevas publicadas en GitHub -------------------
+  // Al terminar de arrancar se busca (Preferencias → Actualizaciones); la descarga va en segundo plano y, cuando está
+  // lista, la barra de pestañas muestra «Reiniciar para actualizar» (y un aviso, una vez por versión).
+  const [update, setUpdate] = useState(null);
+  useEffect(() => {
+    Promise.resolve().then(() => desktop.updateState?.()).then((s) => { if (s) setUpdate(s); }).catch(() => {});
+    return desktop.onUpdate?.((s) => setUpdate(s)) ?? undefined;
+  }, []);
+  useEffect(() => {
+    if (started && prefs.autoUpdate) Promise.resolve().then(() => desktop.updateCheck?.({ auto: true })).catch(() => {});
+  }, [started, prefs.autoUpdate]);
+  const announced = useRef(null);
+  useEffect(() => {
+    if (update?.status !== 'ready' || announced.current === update.version) return;
+    announced.current = update.version;
+    notify(t('core.update.ready', { version: update.version }), 'info', { label: t('core.update.restart'), run: () => installUpdate() });
+  }, [update]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Reiniciar e instalar. Con cambios sin guardar (en cualquier ventana), se pregunta antes. */
+  async function installUpdate() {
+    if (busyRef.current || typeof desktop.updateInstall !== 'function') return;
+    try {
+      let r = await desktop.updateInstall();
+      if (r?.dirty) {
+        const ok = await ask({
+          title: t('core.update.dirtyTitle'),
+          message: t('core.update.dirtyMessage', { count: r.dirty }),
+          actions: [{ id: 'restart', label: t('core.update.restartAnyway'), kind: 'danger' }],
+        });
+        if (ok) r = await desktop.updateInstall({ discard: true });
+      }
+    } catch (e) {
+      notify(t('core.update.failed', { error: e?.message ?? e }), 'error');
+    }
+  }
+
+  // Al cambiar de pestaña: herramienta, selección de texto, búsqueda y cuadro de texto empiezan de cero.
+  const firstTab = useRef(true);
+  useEffect(() => {
+    if (firstTab.current) { firstTab.current = false; return; }
+    setTool('select');
+    setTextSel(null);
+    setSearchOpen(false);
+    setEditingBox(null);
+  }, [tabId]);
 
   const showOpening = useDelayed(task?.kind === 'open');
-  const showSaving = useDelayed(task?.kind === 'save' || task?.kind === 'extract' || task?.kind === 'print' || task?.kind === 'ocr');
+  const showSaving = useDelayed(task?.kind === 'save' || task?.kind === 'extract' || task?.kind === 'print' || task?.kind === 'ocr' || task?.kind === 'split');
   const preparing = useDelayed(!engineReady);
   const savingLabel = task?.kind === 'save' ? t('core.task.saving') : task?.kind === 'extract' ? t('core.task.extracting') : null;
   const hasTargets = targetKeys(state).size > 0;
@@ -1112,6 +1417,23 @@ export default function App() {
       {customMenu && (
         <TitleBar model={menu} title={docName} dirty={state.dirty} isEnabled={isEnabled} onCommand={command} />
       )}
+      <TabBar
+        tabs={root.tabs.map((x) => {
+          const title = x.doc.file?.name ?? (x.doc.pages.length ? t('core.app.untitled') : t('core.tabs.new'));
+          return { id: x.id, title, tip: x.doc.file?.path ?? title, dirty: x.doc.dirty && x.doc.pages.length > 0 };
+        })}
+        active={tabId}
+        busy={busy}
+        canDetach={typeof desktop.detachTab === 'function'}
+        update={update}
+        onInstall={installUpdate}
+        onActivate={(id) => { if (!busyRef.current) dispatch({ type: 'tabActivate', id }); }}
+        onClose={(id) => closeTab(id)}
+        onNew={() => run('newTab')}
+        onMove={(id, to) => dispatch({ type: 'tabMove', id, to })}
+        onDetach={(id, point) => detachTab(id, point)}
+        onDropFiles={openDropped}
+      />
       <Toolbar state={state} hasTargets={hasTargets} busy={busy} run={run} savingLabel={savingLabel} canPages={policy.pages} canExport={policy.copy} />
       {state.mode === 'read' && !empty && (
         <AnnotToolbar
@@ -1160,6 +1482,9 @@ export default function App() {
       {prefsOpen && (
         <PreferencesDialog
           prefs={prefs}
+          update={update}
+          onCheckUpdate={() => Promise.resolve().then(() => desktop.updateCheck?.()).catch(() => {})}
+          onInstallUpdate={() => { setPrefsOpen(false); installUpdate(); }}
           onCancel={() => setPrefsOpen(false)}
           onSave={(p) => {
             const saved = savePrefs(p);
@@ -1168,6 +1493,22 @@ export default function App() {
             setPrefsOpen(false);
             notify(t('core.prefs.saved'));
           }}
+        />
+      )}
+      {splitOpen && (
+        <SplitDialog
+          count={state.pages.length}
+          docName={(state.file?.name ?? state.sources[0]?.name ?? t('dialogs.defaultDocName')).replace(/\.pdf$/i, '')}
+          defaultFolder={typeof desktop.chooseFolder === 'function' ? outputFolder(prefs, dirOf(state.file?.path ?? state.sources.find((x) => x.path)?.path ?? '')) : ''}
+          canPickFolder={typeof desktop.chooseFolder === 'function'}
+          chooseFolder={(o) => desktop.chooseFolder(o)}
+          openPaths={[state.file?.path, ...state.sources.map((x) => x.path)].filter(Boolean)}
+          notices={splitNotices(state)}
+          loadMarks={splitMarks}
+          runSize={(max, onProgress) => pdf.splitBySizeJob(state.pages, { max, security: securityArg(state), outline: state.outline }, onProgress)}
+          filesExist={(paths) => Promise.resolve().then(() => desktop.filesExist?.(paths) ?? [])}
+          onCancel={() => setSplitOpen(false)}
+          onSplit={runSplit}
         />
       )}
       {protectOpen && (
@@ -1274,8 +1615,9 @@ export default function App() {
             onDrop={(e) => { e.preventDefault(); setFileOver(false); dropFiles(e.dataTransfer.files); }}
           />
         ) : state.mode === 'organize' ? (
-          <ErrorBoundary name={t('core.toolbar.organize')} resetKey={state.mode}>
+          <ErrorBoundary name={t('core.toolbar.organize')} resetKey={`${tabId}:${state.mode}`}>
           <OrganizeView
+            key={tabId}
             state={state}
             dispatch={act}
             canPages={policy.pages}
@@ -1285,8 +1627,9 @@ export default function App() {
           />
           </ErrorBoundary>
         ) : (
-          <ErrorBoundary name={t('core.toolbar.read')} resetKey={state.mode}>
+          <ErrorBoundary name={t('core.toolbar.read')} resetKey={`${tabId}:${state.mode}`}>
             <ReaderView
+              key={tabId}
               ref={readerRef} state={state} dispatch={act} tool={tool} colors={colors} conflicts={conflicts} policy={policy}
               textSel={textSel} onTextSel={setTextSel}
               search={searchOpen ? searchView : null}
@@ -1492,7 +1835,9 @@ function StatusBar({ state, docName, tool, task, sigGroups, policy, locked }) {
           <span role="status" className="flex items-center gap-2.5">
             <ProgressBar done={task.done} total={task.total} className="w-32" />
             <span className="tabnum whitespace-nowrap">
-              {task.kind === 'ocr'
+              {task.kind === 'split'
+                ? task.cancelling ? t('core.task.cancelling') : t('core.task.splitFile', { n: Math.min(task.done + 1, task.total), total: task.total })
+                : task.kind === 'ocr'
                 ? task.cancelling ? t('core.task.cancelling') : task.loading ? t('core.task.ocrLoading') : t('core.task.ocrPage', { n: Math.min(task.done + 1, task.total), total: task.total })
                 : task.kind === 'print'
                 ? task.phase === 'send'

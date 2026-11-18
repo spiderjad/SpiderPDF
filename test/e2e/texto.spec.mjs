@@ -129,6 +129,8 @@ test('formato, arrastrar para hacer el cuadro, mover, duplicar (Ctrl+D), borrar 
   const { app, win } = await launch(dir, [file]);
   await win.getByRole('tab', { name: 'Leer' }).click();
   await tool(win, 'Texto nuevo').click();
+  // La zona del cuadro, a la vista (no depende de la altura de la ventana ni de las barras de arriba).
+  await win.locator('[data-i="0"]').evaluate((el) => el.scrollIntoView({ block: 'center' }));
 
   // Arrastrar: un cuadro con ese ancho; el texto se parte en líneas.
   const [x0, y0] = await at(win, 0.15, 0.6);

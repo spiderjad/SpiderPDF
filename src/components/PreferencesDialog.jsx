@@ -8,11 +8,25 @@ import './PreferencesDialog.css';
 
 /**
  * Editar → Preferencias… (Ctrl+,): idioma, tu nombre, la carpeta de salida por defecto, la calidad de «Reducir
- * tamaño» y la IA de «Enviar a IA». onSave(prefs) guarda (src/prefs.js); onCancel no cambia nada.
+ * tamaño», la IA de «Enviar a IA», si al abrir se recuperan las pestañas de la última vez y las actualizaciones
+ * (buscar al abrir, «Buscar ahora», la versión instalada; update = estado de electron/updater.cjs). onSave(prefs) guarda (src/prefs.js); onCancel no cambia nada.
  * Hecha con spider-ui (clases v-*, guía en node_modules/spider-ui/GUIDE.md): v-dialog (<dialog> nativo modal, que
  * atrapa el foco y cierra con Esc). Lo propio (solo disposición) en PreferencesDialog.css con el prefijo cfg-.
  */
-export default function PreferencesDialog({ prefs, onCancel, onSave }) {
+/** Estado de las actualizaciones en una frase (electron/updater.cjs). */
+function updateText(t, u) {
+  switch (u?.status) {
+    case 'unsupported': return t('core.prefs.updateUnsupported');
+    case 'checking': return t('core.prefs.updateChecking');
+    case 'latest': return t('core.prefs.updateLatest');
+    case 'downloading': return t('core.update.downloading', { version: u.version, percent: u.percent ?? 0 });
+    case 'ready': return t('core.prefs.updateReady', { version: u.version });
+    case 'error': return t('core.prefs.updateError', { error: u.message });
+    default: return '';
+  }
+}
+
+export default function PreferencesDialog({ prefs, update = null, onCheckUpdate, onInstallUpdate, onCancel, onSave }) {
   const t = useT();
   const ref = useRef(null);
   const [lang, setLangPref] = useState(prefs.lang ?? 'auto');
@@ -20,6 +34,8 @@ export default function PreferencesDialog({ prefs, onCancel, onSave }) {
   const [outputDir, setOutputDir] = useState(prefs.outputDir ?? '');
   const [quality, setQuality] = useState(prefs.quality ?? 'balanced');
   const [ai, setAi] = useState(prefs.ai);
+  const [restoreTabs, setRestoreTabs] = useState(!!prefs.restoreTabs);
+  const [autoUpdate, setAutoUpdate] = useState(prefs.autoUpdate !== false);
   const [picking, setPicking] = useState(false);
   const cancelRef = useRef(onCancel);
   cancelRef.current = onCancel;
@@ -56,7 +72,7 @@ export default function PreferencesDialog({ prefs, onCancel, onSave }) {
   function submit(e) {
     e.preventDefault();
     if (nameTooLong) return;
-    onSave({ ...prefs, lang, userName, outputDir, quality, ai });
+    onSave({ ...prefs, lang, userName, outputDir, quality, ai, restoreTabs, autoUpdate });
   }
 
   return (
@@ -150,6 +166,41 @@ export default function PreferencesDialog({ prefs, onCancel, onSave }) {
               ))}
             </div>
             <p className="v-help" id="prefs-ia-ayuda">{t('core.prefs.aiHelp')}</p>
+          </fieldset>
+
+          <fieldset className="v-field cfg-fieldset" aria-describedby="prefs-pestanas-ayuda">
+            <legend className="v-label">{t('core.prefs.tabs')}</legend>
+            <label className="cfg-option">
+              <input type="checkbox" checked={restoreTabs} onChange={(e) => setRestoreTabs(e.target.checked)} />
+              {t('core.prefs.restoreTabs')}
+            </label>
+            <p className="v-help" id="prefs-pestanas-ayuda">{t('core.prefs.restoreTabsHelp')}</p>
+          </fieldset>
+
+          <fieldset className="v-field cfg-fieldset" aria-describedby="prefs-act-ayuda">
+            <legend className="v-label">{t('core.prefs.updates')}</legend>
+            <label className="cfg-option">
+              <input type="checkbox" checked={autoUpdate} onChange={(e) => setAutoUpdate(e.target.checked)} disabled={update?.status === 'unsupported'} />
+              {t('core.prefs.autoUpdate')}
+            </label>
+            <div className="cfg-update">
+              <span role="status" aria-live="polite" className="cfg-update__status">{updateText(t, update)}</span>
+              {update?.status === 'ready' ? (
+                <button type="button" className="v-btn-primary v-btn--sm" onClick={onInstallUpdate}>{t('core.update.restartButton')}</button>
+              ) : (
+                <button
+                  type="button"
+                  className="v-btn-secondary v-btn--sm"
+                  onClick={onCheckUpdate}
+                  disabled={!update || ['unsupported', 'checking', 'downloading'].includes(update.status)}
+                >
+                  {t('core.prefs.updateCheck')}
+                </button>
+              )}
+            </div>
+            <p className="v-help" id="prefs-act-ayuda">
+              {update?.current ? `${t('core.prefs.version', { version: update.current })}. ` : ''}{t('core.prefs.updateHelp')}
+            </p>
           </fieldset>
         </div>
 

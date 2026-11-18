@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
-import { tempDir, launch, footer, stubSaveAs, toolbarButton, confirmDialog, engine } from './helpers.mjs';
+import { tempDir, launch, footer, stubSaveAs, toolbarButton, confirmDialog, engine, docTabs } from './helpers.mjs';
 
 const dialog = (win) => win.getByRole('dialog', { name: 'Nuevo documento' });
 
@@ -63,12 +63,13 @@ test('desde el estado vacío: Carta horizontal de 3 páginas, se guarda con ese 
   await app.close();
 });
 
-test('con cambios sin guardar pide confirmación; flechas para elegir el tamaño e Intro para crear', async () => {
+test('con un documento abierto, el nuevo va en su propia pestaña (sin preguntar); flechas para el tamaño e Intro para crear', async () => {
   const dir = await tempDir();
   const { app, win } = await launch(dir);
   await win.keyboard.press('Control+N');
   await dialog(win).getByRole('button', { name: 'Crear' }).click(); // A4 vertical, 1 página
   await expect(footer(win)).toContainText('1 página');
+  await expect(docTabs(win)).toHaveCount(1); // la pestaña vacía del principio se reutiliza
 
   await win.keyboard.press('Control+N');
   const d = dialog(win);
@@ -79,18 +80,15 @@ test('con cambios sin guardar pide confirmación; flechas para elegir el tamaño
   await d.getByLabel('Páginas').fill('2');
   await d.getByLabel('Páginas').press('Enter');
 
-  // El documento anterior no está guardado: confirmación aparte.
-  await expect(confirmDialog(win)).toContainText('Si creas un documento nuevo, se perderán los cambios de este.');
-  await confirmDialog(win).getByRole('button', { name: 'Cancelar' }).click();
-  await expect(footer(win)).toContainText('1 página');
-
-  await win.keyboard.press('Control+N');
-  await dialog(win).getByLabel('Páginas').fill('2');
-  await dialog(win).getByRole('button', { name: 'Crear' }).click();
-  await confirmDialog(win).getByRole('button', { name: 'Crear sin guardar' }).click();
+  // El anterior no está guardado, pero no se pierde: sigue en su pestaña.
+  await expect(confirmDialog(win)).toHaveCount(0);
   await expect(footer(win)).toContainText('2 páginas');
+  await expect(docTabs(win)).toHaveCount(2);
+  await expect(docTabs(win).nth(1)).toHaveAttribute('aria-selected', 'true');
   // A3 vertical en pantalla: más alta que ancha y más grande que un A4.
   const box = await win.locator('[data-i="0"]').boundingBox();
   expect(box.height / box.width).toBeCloseTo(420 / 297, 2);
+  await docTabs(win).nth(0).click();
+  await expect(footer(win)).toContainText('1 página');
   await app.close();
 });

@@ -78,6 +78,15 @@ export const pdf = {
     return job('reduce', { refs, level, security, docIds, outline: outlineForSave(pages, outline) }, [], onProgress);
   },
 
+  /**
+   * «Dividir» por tamaño máximo (bytes): grupos de páginas seguidas cuyo PDF no pasa de max, ya compuestos.
+   * → { promise, cancel }; promise → { groups: [{ from, to, size, bytes, over? }], warnings }. onProgress({ done, total }).
+   */
+  async splitBySizeJob(pages, { max, security, outline }, onProgress) {
+    const refs = await Promise.all(pages.map(toEngineRef));
+    return job('splitBySize', { refs, max, security, keys: pages.map((p) => p.key), tree: outline ?? null }, [], onProgress);
+  },
+
   /** Desbloquea los permisos con la contraseña de propietario. → { ...security, unlocked } */
   unlockOwner: (docId, password) => call('unlockOwner', { docId, password }),
 
@@ -194,6 +203,9 @@ export const pdf = {
     if (!linkCache.has(key)) linkCache.set(key, call('links', { docId, index }).catch(() => []));
     return linkCache.get(key);
   },
+
+  /** Bytes del PDF tal como se abrió (para pasar una pestaña a otra ventana). → Uint8Array */
+  sourceBytes: (docId) => call('sourceBytes', { docId }),
 
   close(docId) {
     for (const c of [fieldCache, runCache, charCache, outlineCache, linkCache, fontDataCache, scanCache]) for (const key of c.keys()) if (key.startsWith(`${docId}:`)) c.delete(key);

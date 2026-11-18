@@ -18,3 +18,7 @@
 .cfg-option { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; }
 .cfg-option input { margin: 0; accent-color: var(--sp-text-primary); }
 .cfg-option input:focus-visible { outline: 2px solid var(--sp-focus); outline-offset: 2px; }
+
+/* Actualizaciones: estado (buscando, última versión, descargando…) y el botón, en una línea. */
+.cfg-update { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; min-height: 28px; }
+.cfg-update__status { font-size: 13px; color: var(--sp-text-secondary); }

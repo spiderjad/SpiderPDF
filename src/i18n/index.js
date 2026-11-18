@@ -68,12 +68,33 @@ function lookup(key) {
   return CATALOG[current]?.[key] ?? CATALOG.es[key];
 }
 
+// En macOS los textos se adaptan solos: teclas (Ctrl → ⌘, Mayús → ⇧, Supr → ⌫), el Explorador → el Finder y
+// «el diálogo de Windows» → «el del sistema». Así los catálogos tienen un solo texto por idioma.
+let platform = 'other';
+const MAC_TEXT = [
+  [/Ctrl\+/g, '⌘'],
+  [/\bCtrl\b/g, '⌘'],
+  [/(^|[^\p{L}])(Mayús|Shift|Maj)(?![\p{L}])/gu, '$1⇧'],
+  [/(^|[^\p{L}])(Supr|Del)(?![\p{L}])/gu, '$1⌫'],
+  [/a l’Explorador/g, 'al Finder'],
+  [/l’Explorador/g, 'el Finder'],
+  [/File Explorer/g, 'Finder'],
+  [/Explorador/g, 'Finder'],
+  [/diálogo de Windows/g, 'diálogo del sistema'],
+  [/Windows print dialog/g, 'system print dialog'],
+  [/diàleg del Windows/g, 'diàleg del sistema'],
+];
+/** 'darwin' (o 'mac') activa los textos de macOS. Lo llama main.jsx con la plataforma de Electron. */
+export function setPlatform(p) { platform = p === 'darwin' || p === 'mac' ? 'mac' : 'other'; }
+export const forPlatform = (s) => (platform === 'mac' ? MAC_TEXT.reduce((x, [re, to]) => x.replace(re, to), s) : s);
+
 /** Texto traducido. params: { nombre: valor } para {nombre}; count elige el plural. */
 export function t(key, params) {
   let s;
   if (params && typeof params.count === 'number') s = lookup(`${key}_${pluralCategory(params.count)}`) ?? lookup(`${key}_other`);
   s ??= lookup(key);
   if (s == null) return key;
+  s = forPlatform(s);
   if (!params) return s;
   return s.replace(/\{(\w+)\}/g, (m, name) => (params[name] == null ? m : String(params[name])));
 }

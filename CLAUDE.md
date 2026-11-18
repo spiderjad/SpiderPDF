@@ -2,7 +2,8 @@
 
 **SpiderPDF**: editor de PDF de escritorio (Windows y Mac) propio, **sin servicios externos**.
 (La carpeta del proyecto sigue llamándose `pdf-editor`; el producto, el paquete npm y todo lo visible es SpiderPDF.)
-El objetivo es poder venderlo cerrado, así que las licencias importan (ver abajo).
+Es **gratuito** y el repositorio es **público** (github.com/spiderjad/SpiderPDF); las licencias siguen importando (ver
+abajo).
 Interfaz en **español, inglés y catalán** (ver «Idiomas»); el español es el original. El autor es Diego (programador,
 Argentina, trabaja en España).
 
@@ -17,7 +18,11 @@ Argentina, trabaja en España).
 - `npm run dev`: app Electron con recarga en caliente.
 - `npm run web`: la misma interfaz en el navegador (http://localhost:5173), útil para depurar UI.
 - `node test/make-fixtures.js`: regenera los PDFs de ejemplo de `test/fixtures`.
-- `npm run dist:win` / `npm run dist:mac`: instaladores.
+- `npm run release:win`: como `dist:win`, pero sube el instalador, su `.blockmap` y `latest.yml` a un borrador de
+  release en GitHub (necesita `GH_TOKEN`; pasos en `docs/publicar-version.md`). Las copias instaladas se actualizan
+  cuando Diego publica el borrador.
+- `npm run dist:win`: instalador NSIS x64 en `release/SpiderPDF Setup x.y.z.exe`, sin publicar nada (sin firma de código por ahora;
+  SmartScreen avisa «Editor desconocido»). `npm run dist:mac`: solo en un Mac, ver `docs/compilar-en-mac.md`.
 
 ## Arquitectura
 - **Motor: solo PDFium** (`@embedpdf/pdfium`, WebAssembly, MIT + Apache 2.0). No añadir pdf-lib al runtime (solo se usa en tests para crear fixtures).
@@ -25,9 +30,11 @@ Argentina, trabaja en España).
 - `src/engine/pdf.worker.js`: ejecuta `PdfCore` en un Web Worker (la UI nunca se bloquea).
 - `src/engine/client.js`: RPC al worker + caché LRU de renders (`renderPage`, `scaleFor`).
 - `src/geometry.js`: conversiones de coordenadas compartidas por UI y motor.
-- `src/state.js`: reducer puro (páginas, selección, deshacer/rehacer). Probado en Node.
+- `src/state.js`: reducer puro de un documento (páginas, selección, deshacer/rehacer). Probado en Node.
+- `src/tabs.js`: pestañas de la ventana (`{ tabs: [{ id, doc }], active }`); su reducer envuelve al de `state.js`.
+  En `App.jsx`, `state` es el documento de la pestaña activa (ver «Pestañas»).
 - `src/components/`: Toolbar, OrganizeView (cuadrícula con arrastrar y soltar), ReaderView (lectura con zoom), PageImage.
-- `electron/main.cjs`: ventana, menú nativo (solo macOS), diálogos, guardado atómico (temporal + rename), protocolo `app://` con CSP estricta, una sola instancia, asociación de `.pdf`.
+- `electron/main.cjs`: ventanas (varias: `windows`, cada diálogo e IPC con la que pregunta), menú nativo (solo macOS), diálogos, guardado atómico (temporal + rename), protocolo `app://` con CSP estricta, una sola instancia, asociación de `.pdf`.
 - **Menú:** Archivo, Editar y Ver se definen una sola vez en `electron/menu.json` (etiqueta, `cmd` o `role`, `accel`, variantes `mac`, `dev`).
   - macOS: `main.cjs` construye con él el menú nativo, que gestiona los atajos con Cmd.
   - Windows y Linux: sin menú nativo (`Menu.setApplicationMenu(null)`) y ventana con `titleBarStyle: 'hidden'` + `titleBarOverlay`
@@ -57,6 +64,8 @@ Argentina, trabaja en España).
 6. Cada página original aparece como mucho una vez en `refs` (la UI no duplica páginas).
 
 ## Reglas del proyecto
+- **Responder siempre en español a Diego** (mensajes, informes y resúmenes), aunque el código, las herramientas o
+  las pruebas den la salida en otro idioma.
 - **Nunca capturar la pantalla completa ni otras ventanas.** Solo la ventana de SpiderPDF (por su handle o con las APIs de
   Electron/Playwright: `win.screenshot`, `webContents.capturePage`). Ante la duda, preguntar a Diego.
 - **No cerrar procesos que no haya arrancado yo** (Electron, Node, terminales, servidores) sin preguntar antes a Diego.
@@ -628,12 +637,111 @@ para «Insertar» y «Exportar».
   en `PreferencesDialog.css` (prefijo `cfg-`). No se importa `spider-ui/tailwind-v4.css`: cambiaría `--font-sans` de
   toda la app. E2E `test/e2e/preferencias.spec.mjs` e `idiomas.spec.mjs`.
 
+**macOS (preparado, sin probar en un Mac; guía en `docs/compilar-en-mac.md`):**
+- `package.json`: `.dmg` arm64 y x64 (`SpiderPDF-x.y.z-arch.dmg`), firma «ad hoc» (`identity: "-"`, sin certificado),
+  `hardenedRuntime: false` hasta tener Developer ID y notarización; asociación de `.pdf` como editor alternativo.
+- Menú nativo (`buildMenu` en `main.cjs`): menú de la app traducido (Acerca de, Preferencias ⌘, — fuera de Editar con
+  `"mac": { "hidden": true }` en `menu.json` —, Servicios, Ocultar, Salir) y Ventana; Cortar y Pegar solo en macOS
+  (`macOnly`, roles nativos para los campos de texto). Con el menú nativo ⌘Z, ⇧⌘Z y ⌘A llegan como órdenes: en un
+  campo de texto actúan sobre el texto (`isEditing()` en `run()` de `App.jsx`).
+- Textos: `forPlatform` en `src/i18n/index.js` cambia en macOS Ctrl → ⌘, Mayús/Shift/Maj → ⇧, Supr/Del → ⌫, el
+  Explorador → el Finder y «el diálogo de Windows» → «el del sistema» (`setPlatform` en `main.jsx`). Probado en
+  `test/i18n.test.js`.
+- Compartir sin el ayudante de Windows (`macNative` en `electron/share.cjs`, probado con Electron simulado en
+  `test/share.test.js`): copiar el archivo con el portapapeles de Electron (`NSFilenamesPboardType` + `public.file-url`),
+  correo con `open -a <programa de mailto:>` (mensaje nuevo con el adjunto) y «Más opciones» = `ShareMenu` de macOS
+  (IPC `share:system`, `DESKTOP_API` = 10; el destino solo aparece en macOS).
+- Imprimir: igual que en Windows (Electron + CUPS); el diálogo del sistema guarda como PDF.
+- Las e2e son de Windows (barra de menús propia, atajos con Ctrl); en el Mac, `npm test` y la lista de la guía.
+
+**Pestañas (hecho, pendiente del visto bueno):** un documento por pestaña; varias ventanas.
+- Estado: `src/tabs.js` (puro, `test/tabs.test.js`). Una acción de documento va a la pestaña `a.tab` o a la activa: las
+  tareas que esperan (guardar, añadir, OCR, proteger) anotan su pestaña al empezar. `tabOpen` (en la activa si está
+  vacía; si no, nueva a su derecha y activa), `tabClose` (pasa a la de la derecha; la última deja una vacía),
+  `tabActivate`, `tabMove`, `tabNew` (hereda vista y zoom), `tabAdopt`. Siempre hay al menos una pestaña.
+- Abrir: cada PDF en su pestaña (Abrir con varios, recientes, Explorador, arranque con varios archivos, soltarlos en
+  la barra o en el estado vacío). Uno ya abierto (`findTabByPath`: su `file.path`) no se duplica, se pasa a su pestaña
+  («ya estaba abierto»). Ya no hay «Abrir sin guardar» ni «Crear sin guardar»: el anterior sigue en su pestaña.
+  «Añadir PDF» sigue uniendo en el documento activo (en e2e, `launchMerged` de helpers).
+- Cerrar: Ctrl+W, la ×, botón central del ratón; con cambios, «¿Guardar los cambios de «x»?» (Guardar / Cerrar sin
+  guardar / Cancelar). El aviso nativo al cerrar la ventana cuenta los documentos con cambios (`state:dirty` = número).
+- Teclado: Ctrl+T, Ctrl+W, Ctrl+Tab / Ctrl+Mayús+Tab; en la barra, flechas, Inicio, Fin y Supr. Cambiar, cerrar o
+  mover pestañas está en `BLOCKED_WHILE_BUSY`. Cambiar de pestaña vuelve a Seleccionar, suelta la selección de texto y
+  cierra Buscar; las vistas llevan `key={tabId}` (Leer vuelve a la página en la que estaba).
+- `TabBar.jsx` + `TabBar.css` (prefijo `pt-`), entre la barra de título y la cabecera; la activa, del color de la
+  cabecera. Arrastrar en horizontal ordena (`tabMove`).
+- Varias ventanas (`main.cjs`): `windows` (webContents.id → { win, dirty, tabs, active, remember, pending, snapshot,
+  adopt }), `winOf(e)` para diálogos e IPC, `targetWindow()` (la del foco o la última que lo tuvo) para lo que llega de
+  fuera, `broadcast` (recientes). «Salir» = `app.quit()` (cada ventana con su aviso). Explorador con la app abierta
+  (`second-instance`), «Abrir» y recientes pasan por `routeOpen`: lo que ya está abierto en otra ventana se muestra
+  allí (`tabs:activate`), lo demás se abre en la que pregunta.
+- Mover a otra ventana: soltar la pestaña a más de 40 px de la barra (o Ver → «Mover la pestaña a una ventana nueva»).
+  `snapshotDoc` (sin historial; Blobs como bytes) + `pdf.sourceBytes` (el PDF tal como se abrió, del motor) → IPC
+  `tab:detach` → ventana nueva bajo el puntero (`boundsNear`) → `tab:pending` → `adoptTab` vuelve a abrir los PDF (si
+  están protegidos pide la contraseña) y `restoreDoc` (claves de página e id de anotación nuevos) → `tab:adopted`. Solo
+  entonces la de origen la quita; si falla o se cierra antes, se queda. Una contraseña nueva pendiente no viaja.
+- Recordar pestañas: Preferencias → «Volver a abrir las pestañas de la última vez» (`prefs.restoreTabs`, desactivado
+  por defecto). Cada ventana informa (`tabs:report`) y `electron/session.cjs` (`test/session.test.js`) escribe
+  `<userData>/sesion.json` `{ windows: [{ tabs, active }] }`; cerrar una ventana (no la app) la quita; desactivarlo lo
+  borra. Al arrancar, `session:restore` (una vez): la primera ventana en la que pregunta, las demás en ventanas nuevas
+  (`pending`). Las Preferencias se sincronizan entre ventanas con el evento `storage`. `DESKTOP_API` = 11.
+- E2E `test/e2e/pestanas.spec.mjs` (también una segunda instancia como el Explorador, y la sesión con dos ventanas).
+- Límites: no se cambia de pestaña mientras hay una tarea (OCR, imprimir…); al mover una pestaña se pierde su
+  historial de deshacer; soltarla sobre otra ventana abre una nueva (no la une a esa); al recordar, las ventanas
+  extra no recuerdan cuál era su pestaña activa.
+
+**Dividir PDF (hecho, pendiente del visto bueno):** Archivo → «Dividir PDF…» (`cmd: split`; como Extraer, necesita
+`policy.pages`).
+- `src/split.js` (puro, `test/split.test.js`, también con PDFium): `every` (cada N), `page`, `ranges` («1-3, 4-8, 9-»,
+  un archivo por intervalo; aviso de las páginas que se quedan fuera), `bookmarks` (marcadores de primer nivel con
+  `firstPos`; las páginas de antes del primero van con él; manda el índice creado en la app si lo hay), `size`
+  (`groupsBySize`: compone de verdad cada trozo; salto según el peso medio y luego bisección; una página que sola pasa
+  del máximo va aparte, con aviso). Nombres: `fileNames` con {n}, {name}, {pages} y {title}, `safeFileName`, sin
+  repetir (« (2)»); `patternError` pide {n} o {pages} (o {title} con marcadores).
+- Comprobado: PDFium no arrastra los objetos de las páginas quitadas al componer (1 página de 10 ≈ 1/10 del tamaño).
+- Worker `splitBySize` (`pdf.splitBySizeJob`): compose (+ qpdf si hace falta) con la protección y el índice recortado a
+  cada trozo, cancelable; esos bytes son los que se escriben.
+- `SplitDialog.jsx` (v-dialog; `SplitDialog.css`, prefijo `dv-`): modo, carpeta (la de salida o la del original),
+  patrón, vista previa (8 filas + «y N más»; tamaño en el modo por tamaño), «ya existe» y «Dividir y reemplazar» (IPC
+  `files:exist`), no deja reemplazar un PDF abierto, avisos de redacción, firma y contraseña. Recuerda modo, N, MB y
+  patrón en `spiderpdf:dividir`.
+- `runSplit` (App): un archivo cada vez (`file:save` con ruta), «Dividiendo… archivo 3 de 12» con Cancelar; aviso con
+  «Mostrar en la carpeta» (IPC `file:reveal`, solo archivos escritos en la sesión; e2e `__spiderPdfRevealHook`). En el
+  navegador, cada archivo se descarga. E2E `test/e2e/dividir.spec.mjs`.
+- Límites: cada trozo solo lleva los marcadores de sus páginas; por tamaño, en documentos grandes el cálculo tarda
+  (varias composiciones por archivo, con su progreso).
+
+**Actualizaciones automáticas (hecho, pendiente del visto bueno):** electron-updater 6.8.10 (MIT; la que salió con
+electron-builder 26.17.0, mismo `builder-util-runtime` 9.7.0; dependencias MIT/ISC/BlueOak/PSF, ninguna de menos de 14
+días) desde las Releases de GitHub (`build.publish`: proveedor `github`, `spiderjad/SpiderPDF`, `releaseType: draft`).
+- `electron/updater.cjs` (`test/updater.test.js` con un autoUpdater simulado): estados `unsupported`, `idle`,
+  `checking`, `latest`, `downloading` (version, percent), `ready`, `error` (mensaje corto). Descarga en segundo plano
+  (`autoDownload`), instala al salir si no se reinicia (`autoInstallOnAppQuit`); la búsqueda automática, como mucho una
+  cada 4 horas (cada ventana la pide al arrancar). Solo en la app empaquetada para Windows (en macOS hace falta la firma
+  de Apple; en desarrollo no hay `app-update.yml`).
+- IPC `update:state|check|install` y aviso `update:changed` (a todas las ventanas). `DESKTOP_API` = 12. Reiniciar
+  (`update:install`): si alguna ventana tiene cambios sin guardar, devuelve cuántos y la interfaz pregunta
+  («Reiniciar sin guardar»); con `discard`, `discardOnQuit` evita el aviso de cada ventana (el instalador cierra la app y
+  no lo esperaría) y `quitting` conserva la sesión. `quitAndInstall(true, true)`: en silencio y vuelve a abrir.
+- Interfaz: al terminar de arrancar se busca si `prefs.autoUpdate` (activado por defecto). En la barra de pestañas, a la
+  derecha: «Descargando la versión x… 40 %» y luego el botón «Reiniciar para actualizar»; aviso con «Reiniciar» una vez
+  por versión. Preferencias → «Actualizaciones»: buscar al abrir, estado, «Buscar ahora» (o «Reiniciar para
+  actualizar»), versión instalada. Los errores (sin conexión) solo se ven ahí.
+- Publicar: `npm run release:win` con `GH_TOKEN` → borrador en GitHub → Diego lo prueba y lo publica
+  (`docs/publicar-version.md`). electron-builder sube el instalador como `SpiderPDF-Setup-x.y.z.exe` (GitHub no admite
+  espacios) y electron-updater lo busca con ese nombre. Comprobado con un empaquetado de prueba: `latest.yml`,
+  `.blockmap`, `app-update.yml` y electron-updater (con su `semver` 7.7.4) dentro del asar.
+- E2E `test/e2e/actualizar.spec.mjs`: `globalThis.__spiderPdfUpdateHook` (autoUpdater simulado, solo sin empaquetar)
+  para el flujo completo, y el electron-updater real cargado en el proceso principal (sin empaquetar no busca).
+- Límites: la primera versión con actualizaciones se instala a mano; sin firma de código, lo protege HTTPS + SHA-512 de
+  la misma release (la cuenta de GitHub con doble factor); macOS sin actualizaciones hasta tener Developer ID.
+
 ## Hoja de ruta
 4. Hecho: OCR, Compartir, Contraseñas y Reducir tamaño (ver arriba). Falta que Diego pruebe las contraseñas en Edge
    y Acrobat con `test/out/contrasenas/` y que los reducidos se ven bien.
 5. Firma con certificado: **aplazada** (propuesta aprobada con sus ajustes, ver «Paso 5» abajo).
 6. Conversiones: Excel y Word hechos (ver «Paso 6, tandas 1 y 2»), pendientes del visto bueno de Diego.
-Después: auto-actualización (electron-updater), firma de código (Authenticode y notarización de Apple).
+Después: firma de código (Authenticode y notarización de Apple; con ella, también actualizaciones en macOS).
 
 **Paso 5 — APLAZADO por decisión de Diego; decisiones ya aprobadas para cuando se retome:** ayudante nativo en C# (`csc.exe` de .NET Framework 4.8, que trae
 Windows), compilado al empaquetar y dentro de la app (se firmará con la firma de código); claves CNG y también CryptoAPI

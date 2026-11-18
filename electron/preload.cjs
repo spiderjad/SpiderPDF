@@ -8,7 +8,7 @@ function subscribe(channel, cb) {
 
 contextBridge.exposeInMainWorld('desktop', {
   platform: process.platform,
-  apiVersion: 9, // = DESKTOP_API de src/desktop.js y de main.cjs (subirlas a la vez)
+  apiVersion: 12, // = DESKTOP_API de src/desktop.js y de main.cjs (subirlas a la vez)
   mainApiVersion: () => ipcRenderer.invoke('app:apiVersion'),
   openPdfs: () => ipcRenderer.invoke('dialog:open'),
   pendingFiles: () => ipcRenderer.invoke('files:pending'),
@@ -34,6 +34,21 @@ contextBridge.exposeInMainWorld('desktop', {
   onMenu: (cb) => subscribe('menu', cb),
   menuRole: (role) => ipcRenderer.send('menu:role', String(role)),
   onFiles: (cb) => subscribe('files:incoming', cb),
+  // Pestañas: informar de las abiertas, pasar una a otra ventana, recibir la que llega y recordar la sesión.
+  reportTabs: (info) => ipcRenderer.send('tabs:report', info),
+  onActivateTab: (cb) => subscribe('tabs:activate', cb),
+  detachTab: (snapshot, point) => ipcRenderer.invoke('tab:detach', snapshot, point),
+  pendingTab: () => ipcRenderer.invoke('tab:pending'),
+  tabAdopted: (ok) => ipcRenderer.send('tab:adopted', !!ok),
+  restoreSession: () => ipcRenderer.invoke('session:restore'),
+  // Dividir: qué destinos existen ya y «Mostrar en la carpeta».
+  filesExist: (paths) => ipcRenderer.invoke('files:exist', paths),
+  revealFile: (path) => ipcRenderer.invoke('file:reveal', String(path)),
+  // Actualizaciones (GitHub): estado, buscar, reiniciar para instalar y avisos de cambio de estado.
+  updateState: () => ipcRenderer.invoke('update:state'),
+  updateCheck: (o) => ipcRenderer.invoke('update:check', { auto: !!o?.auto }),
+  updateInstall: (o) => ipcRenderer.invoke('update:install', { discard: !!o?.discard }),
+  onUpdate: (cb) => subscribe('update:changed', cb),
   openLink: (url) => ipcRenderer.invoke('link:open', String(url)),
   exportSave: (o) => ipcRenderer.invoke('export:save', o),
   exportOpen: (path) => ipcRenderer.invoke('export:open', String(path)),
@@ -41,6 +56,7 @@ contextBridge.exposeInMainWorld('desktop', {
   shareCopyFile: (id) => ipcRenderer.invoke('share:copyFile', id),
   shareMail: (id, subject) => ipcRenderer.invoke('share:mail', id, subject),
   shareReveal: (id) => ipcRenderer.invoke('share:reveal', id),
+  shareSystem: (id) => ipcRenderer.invoke('share:system', id), // solo macOS
   shareWhatsApp: (id) => ipcRenderer.invoke('share:whatsapp', id),
   shareAi: (id, provider) => ipcRenderer.invoke('share:ai', id, provider),
 });
