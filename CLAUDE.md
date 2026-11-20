@@ -406,6 +406,9 @@ Español (original), inglés y catalán. **Todo texto visible pasa por `t()`** (
   `icon.ico` (16, 24, 32, 48, 64, 256; ≤ 32 desde el pequeño), `icon.icns` (16-1024) e `icon.png` (256). Van al repositorio;
   `build/icon.ico` e `icon.png` se empaquetan (`files`) para el icono de la ventana. Comprobado con `electron-builder --dir`:
   `SpiderPDF.exe` con descripción «SpiderPDF» y el icono.
+- Instalador: página de términos y condiciones (`nsis.license` → `build/license.txt`, en inglés, desarrollador Diego
+  Pennisi; hay que aceptarla para instalar). `author` y `build.copyright` = «Diego Pennisi» (editor en «Aplicaciones
+  instaladas» y propiedades del .exe).
 - Interfaz: `AppIcon.jsx` (el dibujo pequeño hasta 32 px, el normal desde 48) en la esquina de la barra de título (28 px)
   y en el estado vacío (88 px, `alt` «SpiderPDF»). E2E: `test/e2e/nombre.spec.mjs`.
 

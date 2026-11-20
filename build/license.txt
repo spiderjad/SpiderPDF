@@ -1,0 +1,71 @@
+SpiderPDF - End User License Agreement (Terms and Conditions)
+
+Developer: Diego Pennisi ("the Developer")
+
+Please read these terms carefully before installing SpiderPDF ("the Software").
+By clicking "I Agree" and installing or using the Software, you accept these
+terms. If you do not accept them, click "Cancel" and do not install the
+Software.
+
+1. License
+The Developer grants you a free, non-exclusive, non-transferable license to
+install and use the Software on any number of your own computers, for personal
+or business purposes, at no cost.
+
+2. Restrictions
+You may not sell, rent or sublicense the Software, or distribute modified
+copies of it presented as the original. Copyright notices and the license
+terms of the third-party components included with the Software must be kept.
+
+3. Ownership
+The Software is the property of the Developer. Third-party components remain
+the property of their respective owners and are used under their own licenses
+(see section 7). These terms do not transfer any intellectual property rights
+to you.
+
+4. Your documents and privacy
+The Software works on your computer. It does not upload your documents or
+send your data to the Developer or to any external service. When automatic
+updates are enabled, the Software contacts GitHub to check for and download
+new versions; you can turn this off in Preferences. Sharing features only
+copy files and open the applications you choose; nothing is sent unless you
+send it yourself.
+
+5. Your responsibility
+You are responsible for the documents you open, edit, sign, redact, protect
+or share with the Software, and for keeping backup copies of them. Always
+check the result before relying on it, especially for redactions, passwords,
+digital signatures and converted files (Word, Excel, images, OCR).
+
+6. No warranty
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT. THE DEVELOPER DOES NOT
+WARRANT THAT THE SOFTWARE WILL BE ERROR-FREE OR THAT IT WILL WORK WITHOUT
+INTERRUPTION.
+
+7. Limitation of liability
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT SHALL THE
+DEVELOPER BE LIABLE FOR ANY DAMAGES OR LOSSES, INCLUDING LOSS OF DATA OR
+DOCUMENTS, LOSS OF PROFITS OR BUSINESS INTERRUPTION, ARISING OUT OF OR IN
+CONNECTION WITH THE USE OR INABILITY TO USE THE SOFTWARE, EVEN IF ADVISED OF
+THE POSSIBILITY OF SUCH DAMAGES.
+
+8. Third-party components
+The Software includes open-source components distributed under their own
+licenses, among them: Electron and Chromium (MIT and others), PDFium through
+@embedpdf/pdfium (Apache 2.0 / BSD), Tesseract.js and its language data
+(Apache 2.0), qpdf (Apache 2.0), HarfBuzz (MIT), ExcelJS (MIT), docx (MIT),
+electron-updater (MIT) and the Inter, Noto Serif and JetBrains Mono fonts
+(SIL Open Font License 1.1). Those licenses apply to their components.
+
+9. Updates and changes
+The Developer may release new versions of the Software and may update these
+terms. Newer versions may come with updated terms, which you will be asked to
+accept when installing them.
+
+10. Termination
+This license ends automatically if you do not comply with these terms. You
+may end it at any time by uninstalling the Software.
+
+Copyright (c) 2026 Diego Pennisi. All rights reserved.

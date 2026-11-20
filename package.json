@@ -3,7 +3,7 @@
   "productName": "SpiderPDF",
   "version": "0.3.0",
   "description": "Editor de PDF propio, sin servicios externos",
-  "author": "Diego",
+  "author": "Diego Pennisi",
   "license": "UNLICENSED",
   "private": true,
   "type": "module",
@@ -59,6 +59,7 @@
   },
   "build": {
     "appId": "com.diego.spiderpdf",
+    "copyright": "Copyright © 2026 Diego Pennisi",
     "productName": "SpiderPDF",
     "files": [
       "dist/**",
@@ -106,6 +107,7 @@
     },
     "nsis": {
       "oneClick": false,
+      "license": "build/license.txt",
       "allowToChangeInstallationDirectory": true,
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico",
