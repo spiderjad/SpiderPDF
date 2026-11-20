@@ -839,6 +839,21 @@ Para la skill de documentación de TIC (`/pdf-tic`), en lugar de Chrome.
   la copia. Siguientes pasos del encargo: (C) aplicación predeterminada de los .pdf y (A) impresora virtual (diseño
   propuesto: controlador «Microsoft Print To PDF» + tubería con un servicio LocalService; pendiente de decidir).
 
+**Aplicación predeterminada de los .pdf (1.1.0, paso C del encargo de Alba; pendiente de probar instalando):**
+- `build/installer.nsh` (electron-builder lo incluye solo): `customInstall` escribe en SHELL_CONTEXT (HKLM para todos,
+  HKCU solo para mí) `Software\SpiderPDF\Capabilities` (nombre, descripción, icono, `.pdf` → ProgId),
+  `RegisteredApplications\SpiderPDF`, `Application` en el ProgId y `Classes\Applications\SpiderPDF.exe` («Abrir con»).
+  `customUnInstall` (no al actualizar) lo borra todo, también el `.pdf` → ProgId que electron-builder deja.
+- **ProgId «Documento PDF»** (`fileAssociations[0].name`): no cambiarlo, es lo que Windows guarda en UserChoice a quien
+  ya eligió SpiderPDF.
+- `customFinishPage`: «Ejecutar SpiderPDF» + «Elegir SpiderPDF como aplicación predeterminada para los PDF» (marcada
+  salvo si ya lo es) → `ms-settings:defaultapps?registeredAppMachine|registeredAppUser=SpiderPDF` (Windows 11 22H2+;
+  en Windows 10 la página general). Textos con `LangString` (1033, 3082, 1027).
+- Instalador en `en_US`, `es_ES`, `ca_ES` (`nsis.installerLanguages`). El catalán de NSIS no trae los 5 textos de la
+  página «Elegir usuarios» (salen en inglés) y eso es un aviso: `nsis.warningsAsErrors: false`. **Al tocar el
+  instalador, revisar los avisos de makensis** (`DEBUG=electron-builder`): hoy solo esos 5.
+- Comprobar a mano: `test/installer/comprobar-registro.ps1` (solo lee; `-Desinstalado` tras desinstalar).
+
 ## Hoja de ruta
 4. Hecho: OCR, Compartir, Contraseñas y Reducir tamaño (ver arriba). Falta que Diego pruebe las contraseñas en Edge
    y Acrobat con `test/out/contrasenas/` y que los reducidos se ven bien.

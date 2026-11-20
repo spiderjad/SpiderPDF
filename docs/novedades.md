@@ -3,6 +3,15 @@
 Cada versión, lo que cambia para quien usa SpiderPDF. `npm run release:win` copia la sección de la versión al texto de
 su release en GitHub (la página de descarga): lo que pone aquí es lo que se ve en la web.
 
+## 1.1.0
+
+- **SpiderPDF como aplicación predeterminada de los PDF.** Ahora aparece en Configuración → Aplicaciones →
+  Aplicaciones predeterminadas y en «Abrir con». Al terminar de instalar, la casilla «Elegir SpiderPDF como aplicación
+  predeterminada para los PDF» abre esa configuración con SpiderPDF ya elegido; solo falta confirmarlo (Windows no deja
+  que un programa lo haga solo).
+- El instalador, también en catalán.
+- Al desinstalar no queda nada de SpiderPDF en la asociación de los PDF.
+
 ## 1.0.0
 
 Primera versión estable.

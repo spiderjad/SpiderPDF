@@ -1,7 +1,7 @@
 {
   "name": "spiderpdf",
   "productName": "SpiderPDF",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Editor de PDF propio, sin servicios externos",
   "author": "Diego Pennisi",
   "license": "UNLICENSED",
@@ -87,6 +87,7 @@
       {
         "ext": "pdf",
         "name": "Documento PDF",
+        "description": "Documento PDF",
         "role": "Editor",
         "mimeType": "application/pdf"
       }
@@ -117,6 +118,12 @@
     "nsis": {
       "oneClick": false,
       "license": "build/license.txt",
+      "warningsAsErrors": false,
+      "installerLanguages": [
+        "en_US",
+        "es_ES",
+        "ca_ES"
+      ],
       "allowToChangeInstallationDirectory": true,
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico",
