@@ -54,7 +54,7 @@ await t('con novedades: el borrador nuevo las lleva como texto; uno existente se
   assert.equal(gh.calls[1][2].body, '- Algo nuevo');
   const gh2 = fakeGitHub([{ id: 5, tag_name: 'v0.3.0', draft: true, html_url: 'u' }]);
   await prepareDraft({ ...base, body: '- Otra cosa', fetch: gh2.fetch });
-  assert.deepEqual(gh2.calls[1].slice(0, 3), ['PATCH', '/repos/spiderjad/SpiderPDF/releases/5', { body: '- Otra cosa' }]);
+  assert.deepEqual(gh2.calls[1].slice(0, 3), ['PATCH', '/repos/spiderjad/SpiderPDF/releases/5', { tag_name: 'v0.3.0', body: '- Otra cosa' }]);
 });
 
 await t('novedades: la sección de la versión, sin la de al lado ni el título; con saltos de Windows; null si falta', () => {

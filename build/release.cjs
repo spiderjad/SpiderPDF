@@ -37,7 +37,8 @@ async function prepareDraft({ owner, repo, version, token, body = null, fetch: f
   const existing = (await api('/releases?per_page=100')).find((r) => r.tag_name === tag);
   if (existing && !existing.draft) throw new Error(`La ${tag} ya está publicada. Sube «version» en package.json antes de publicar otra.`);
   if (existing) {
-    if (body != null) await api(`/releases/${existing.id}`, { method: 'PATCH', body: JSON.stringify({ body }) });
+    // Con tag_name: un borrador cuya etiqueta aún no existe la pierde («untagged-…») si se edita sin ella.
+    if (body != null) await api(`/releases/${existing.id}`, { method: 'PATCH', body: JSON.stringify({ tag_name: tag, body }) });
     return { id: existing.id, html_url: existing.html_url, created: false };
   }
   const made = await api('/releases', { method: 'POST', body: JSON.stringify({ tag_name: tag, name: `SpiderPDF ${version}`, draft: true, prerelease: false, ...(body != null ? { body } : {}) }) });

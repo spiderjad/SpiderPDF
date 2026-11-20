@@ -5,17 +5,12 @@ su release en GitHub (la página de descarga): lo que pone aquí es lo que se ve
 
 ## 1.1.0
 
+Primera versión estable. (La 1.0.0 no llegó a publicarse: sus novedades van aquí.)
+
 - **SpiderPDF como aplicación predeterminada de los PDF.** Ahora aparece en Configuración → Aplicaciones →
   Aplicaciones predeterminadas y en «Abrir con». Al terminar de instalar, la casilla «Elegir SpiderPDF como aplicación
   predeterminada para los PDF» abre esa configuración con SpiderPDF ya elegido; solo falta confirmarlo (Windows no deja
   que un programa lo haga solo).
-- El instalador, también en catalán.
-- Al desinstalar no queda nada de SpiderPDF en la asociación de los PDF.
-
-## 1.0.0
-
-Primera versión estable.
-
 - **HTML a PDF desde la línea de órdenes**, sin abrir ninguna ventana:
   `SpiderPDF --html-a-pdf informe.html informe.pdf` (también varios archivos de una vez). Respeta el tamaño de página,
   los márgenes, la cabecera y el pie del CSS (`@page`, con «página n de total»), los estilos e imágenes que están junto
@@ -23,6 +18,9 @@ Primera versión estable.
 - Al instalar, hay que aceptar los términos y condiciones (en inglés).
 - El instalador y la aplicación indican el autor: Diego Pennisi.
 - Más seguridad: la aplicación instalada ya no se puede usar como intérprete de Node.
+- El instalador, también en catalán.
+- Al desinstalar no queda nada de SpiderPDF en la asociación de los PDF.
+- La web (pdf.spiderjad.com) tiene el botón «Descargar para Windows».
 
 ## 0.3.0
 
