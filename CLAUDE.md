@@ -813,6 +813,32 @@ días) desde las Releases de GitHub (`build.publish`: proveedor `github`, `spide
 - `DESKTOP_API` = 13 (`setTheme`, `saveImage`, `copyImage`; si faltan, se usa `savePdf` y el portapapeles del navegador).
   E2E `test/e2e/imagen.spec.mjs`.
 
+**HTML a PDF por línea de órdenes (1.0.0, paso B del encargo de Alba; pendiente del visto bueno):**
+`SpiderPDF.exe --html-a-pdf <entrada.html> <salida.pdf> [<entrada2> <salida2> …]` (solo la entrada → el .pdf al lado).
+Para la skill de documentación de TIC (`/pdf-tic`), en lugar de Chrome.
+- `electron/htmlpdf.cjs` (`parseArgs`, `countPages` probados en `test/htmlpdf.test.js`): `main.cjs` lo comprueba **antes
+  del candado de instancia única** y termina el módulo con `return` (con la app abierta, la orden no va a su ventana; ni
+  sesión, ni recientes, ni actualizaciones). Carpeta de datos temporal propia y sesión en memoria (`html-a-pdf`).
+- `BrowserWindow` oculta (sandbox, sin preload, sin navegar ni abrir ventanas) → `loadFile` (CSS e imágenes relativos
+  por `file://`) → `document.fonts.ready` + imágenes + 400 ms + otra vez fuentes → `printToPDF({ preferCSSPageSize,
+  pageSize: 'A4' si el CSS no dice, printBackground, sin cabecera ni pie del navegador, tagged y marcadores desde los
+  títulos })` → escritura temporal + rename. 60 s como mucho por archivo.
+- Salida: «PDF creado: ruta (N pág.)» por stdout; errores por stderr (`html.*` en `strings.json`, idioma del sistema).
+  Códigos: 0 bien; 1 algún archivo falló (los demás se convierten); 2 orden mal escrita.
+- `SpiderPDF.com` (`electron/helper/SpiderPdfCli.cs`, compilado por `build/helper/build.cjs`, `extraFiles` junto a
+  `SpiderPDF.exe`): SpiderPDF.exe es de ventanas y en una terminal no se espera; escribiendo `SpiderPDF …` la terminal
+  elige el .com (PATHEXT), que lanza el .exe con los mismos argumentos, comparte la consola, espera y devuelve el código.
+  Sin `--html-a-pdf` lanza la app y vuelve.
+- **`ELECTRON_RUN_AS_NODE`** (la definen las terminales de VS Code y la hereda Claude Code) convertía SpiderPDF.exe en
+  Node («bad option: --html-a-pdf»). La app empaquetada lleva el fuse `runAsNode` desactivado (`build.electronFuses`;
+  también endurece la app) y el .com la quita. En desarrollo (`electron .`) sigue haciendo falta quitarla.
+- Electron 44 (Chromium muy posterior al 131): cajas de margen de `@page` con `counter(page)`/`counter(pages)` y
+  `@page :first`. El primer arranque tras instalar puede tardar ~40 s (antivirus); después ≈ 1 s por informe.
+- E2E `test/e2e/html-a-pdf.spec.mjs` (con la app abierta a la vez; el .com solo con `SPIDERPDF_E2E_EXE`).
+- Pendiente: comparar con el informe de referencia de Alba (`01_Informe_del_projecte.html`, 16 páginas) cuando esté
+  la copia. Siguientes pasos del encargo: (C) aplicación predeterminada de los .pdf y (A) impresora virtual (diseño
+  propuesto: controlador «Microsoft Print To PDF» + tubería con un servicio LocalService; pendiente de decidir).
+
 ## Hoja de ruta
 4. Hecho: OCR, Compartir, Contraseñas y Reducir tamaño (ver arriba). Falta que Diego pruebe las contraseñas en Edge
    y Acrobat con `test/out/contrasenas/` y que los reducidos se ven bien.

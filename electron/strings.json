@@ -57,7 +57,19 @@
     "mac.window": "Ventana",
     "mac.minimize": "Minimizar",
     "mac.zoom": "Zoom",
-    "mac.front": "Traer todo al frente"
+    "mac.front": "Traer todo al frente",
+    "html.usage": "Uso: SpiderPDF --html-a-pdf <entrada.html> <salida.pdf> [<entrada2.html> <salida2.pdf> …]",
+    "html.notPdf": "La salida tiene que ser un archivo .pdf: {file}",
+    "html.same": "La entrada y la salida son el mismo archivo: {file}",
+    "html.dupOutput": "Dos entradas escriben en el mismo PDF: {file}",
+    "html.noInput": "No existe el archivo: {file}",
+    "html.noFolder": "No existe la carpeta de salida: {folder}",
+    "html.timeout": "El HTML tardó demasiado en cargar: {file}",
+    "html.loadFailed": "No se pudo abrir el HTML {file}: {reason}",
+    "html.writeFailed": "No se pudo escribir {file}: {reason}",
+    "html.done": "PDF creado: {file}",
+    "html.donePages": "PDF creado: {file} ({count} pág.)",
+    "html.failed": "No se pudo convertir {file}: {reason}"
   },
   "en": {
     "menu.noRecents": "No recent files",
@@ -117,7 +129,19 @@
     "mac.window": "Window",
     "mac.minimize": "Minimize",
     "mac.zoom": "Zoom",
-    "mac.front": "Bring all to front"
+    "mac.front": "Bring all to front",
+    "html.usage": "Usage: SpiderPDF --html-a-pdf <input.html> <output.pdf> [<input2.html> <output2.pdf> …]",
+    "html.notPdf": "The output must be a .pdf file: {file}",
+    "html.same": "The input and the output are the same file: {file}",
+    "html.dupOutput": "Two inputs write to the same PDF: {file}",
+    "html.noInput": "File not found: {file}",
+    "html.noFolder": "Output folder not found: {folder}",
+    "html.timeout": "The HTML took too long to load: {file}",
+    "html.loadFailed": "Couldn’t open the HTML {file}: {reason}",
+    "html.writeFailed": "Couldn’t write {file}: {reason}",
+    "html.done": "PDF created: {file}",
+    "html.donePages": "PDF created: {file} ({count} p.)",
+    "html.failed": "Couldn’t convert {file}: {reason}"
   },
   "ca": {
     "menu.noRecents": "No hi ha fitxers recents",
@@ -177,6 +201,18 @@
     "mac.window": "Finestra",
     "mac.minimize": "Minimitza",
     "mac.zoom": "Zoom",
-    "mac.front": "Porta-ho tot al davant"
+    "mac.front": "Porta-ho tot al davant",
+    "html.usage": "Ús: SpiderPDF --html-a-pdf <entrada.html> <sortida.pdf> [<entrada2.html> <sortida2.pdf> …]",
+    "html.notPdf": "La sortida ha de ser un fitxer .pdf: {file}",
+    "html.same": "L’entrada i la sortida són el mateix fitxer: {file}",
+    "html.dupOutput": "Dues entrades escriuen al mateix PDF: {file}",
+    "html.noInput": "No existeix el fitxer: {file}",
+    "html.noFolder": "No existeix la carpeta de sortida: {folder}",
+    "html.timeout": "L’HTML ha trigat massa a carregar-se: {file}",
+    "html.loadFailed": "No s’ha pogut obrir l’HTML {file}: {reason}",
+    "html.writeFailed": "No s’ha pogut escriure {file}: {reason}",
+    "html.done": "PDF creat: {file}",
+    "html.donePages": "PDF creat: {file} ({count} pàg.)",
+    "html.failed": "No s’ha pogut convertir {file}: {reason}"
   }
 }

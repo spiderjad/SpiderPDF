@@ -14,7 +14,8 @@ proyecto: se pasa como variable de entorno al publicar.
 ## Cada versión
 
 1. Sube `version` en `package.json` (por ejemplo `0.1.0` → `0.1.1`). Las copias instaladas solo se actualizan a una
-   versión **mayor** que la suya.
+   versión **mayor** que la suya. Escribe sus novedades en `docs/novedades.md` (sección `## 0.1.1`): son el texto
+   de la release en GitHub, lo que se ve en la página de descarga. Sin esa sección, `release:win` se para.
 2. Comprueba que todo está en verde: `npm test` y `npm run test:e2e`.
 3. En PowerShell, desde la carpeta del proyecto:
    ```powershell
@@ -22,10 +23,11 @@ proyecto: se pasa como variable de entorno al publicar.
    npm run release:win
    Remove-Item Env:GH_TOKEN
    ```
-   Compila, crea el borrador de release `v0.1.1` (si no existe; `build/release.cjs`) y sube a él tres archivos:
+   Compila, crea el borrador de release `v0.1.1` (si no existe; `build/release.cjs`) con las novedades como texto (si
+   ya existía, se las pone) y sube a él tres archivos:
    `SpiderPDF-Setup-0.1.1.exe`, su `.blockmap` (para descargar solo lo que cambió) y `latest.yml` (versión y SHA-512).
 4. Prueba el instalador del borrador en un equipo (o una máquina virtual).
-5. En GitHub → Releases → el borrador → escribe las novedades → comprueba que **«Set as a pre-release» está
+5. En GitHub → Releases → el borrador → revisa las novedades → comprueba que **«Set as a pre-release» está
    desmarcado** (el actualizador no mira las pre-releases) → **Publish release**. Desde ese momento, las copias
    instaladas la encuentran al arrancar (o con Preferencias → Actualizaciones → «Buscar ahora»).
 

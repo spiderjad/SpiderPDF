@@ -2,9 +2,10 @@
 // Con un fetch simulado (no toca GitHub).  Ejecutar: node test/release.test.js
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
+import { readFileSync } from 'node:fs';
 
 const require = createRequire(import.meta.url);
-const { prepareDraft } = require('../build/release.cjs');
+const { prepareDraft, notesFor } = require('../build/release.cjs');
 
 let passed = 0;
 const t = async (name, fn) => { await fn(); passed++; console.log('  ok -', name); };
@@ -45,6 +46,30 @@ await t('si esa versión ya está publicada: error (hay que subir la versión)',
 await t('un error de GitHub se explica (código y respuesta)', async () => {
   const fetch = async () => ({ ok: false, status: 401, text: async () => 'Bad credentials' });
   await assert.rejects(prepareDraft({ ...base, fetch }), /401.*Bad credentials/);
+});
+
+await t('con novedades: el borrador nuevo las lleva como texto; uno existente se actualiza (PATCH)', async () => {
+  const gh = fakeGitHub([]);
+  await prepareDraft({ ...base, body: '- Algo nuevo', fetch: gh.fetch });
+  assert.equal(gh.calls[1][2].body, '- Algo nuevo');
+  const gh2 = fakeGitHub([{ id: 5, tag_name: 'v0.3.0', draft: true, html_url: 'u' }]);
+  await prepareDraft({ ...base, body: '- Otra cosa', fetch: gh2.fetch });
+  assert.deepEqual(gh2.calls[1].slice(0, 3), ['PATCH', '/repos/spiderjad/SpiderPDF/releases/5', { body: '- Otra cosa' }]);
+});
+
+await t('novedades: la sección de la versión, sin la de al lado ni el título; con saltos de Windows; null si falta', () => {
+  const md = '# Novedades\n\nIntro.\n\n## 1.0.0\n\n- Uno\n- Dos\n\n## 0.3.0\n\n- Viejo\n';
+  assert.equal(notesFor(md, '1.0.0'), '- Uno\n- Dos');
+  assert.equal(notesFor(md, '0.3.0'), '- Viejo');
+  assert.equal(notesFor(md.replace(/\n/g, '\r\n'), '1.0.0'), '- Uno\n- Dos');
+  assert.equal(notesFor(md, '1.0'), null);
+  assert.equal(notesFor(md, '2.0.0'), null);
+});
+
+await t('docs/novedades.md tiene la sección de la versión de package.json (si no, release:win se para)', () => {
+  const md = readFileSync(new URL('../docs/novedades.md', import.meta.url), 'utf8');
+  const { version } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+  assert.ok(notesFor(md, version), `falta «## ${version}» en docs/novedades.md`);
 });
 
 console.log(`\n${passed} pruebas de publicar versiones superadas.`);

@@ -53,6 +53,16 @@ const argvPaths = [];
 // donde si no sería «Electron»). Va antes de todo: la carpeta de datos (userData) sale del nombre.
 app.setName(APP_NAME);
 if (process.platform === 'win32') app.setAppUserModelId(APP_ID); // = build.appId
+
+// Línea de órdenes «--html-a-pdf» (electron/htmlpdf.cjs): convierte sin ventana y sale. Antes del candado de
+// instancia única (con la app abierta, si no, la orden iría a esa ventana) y de todo lo demás (sesión, recientes,
+// actualizaciones). Un «return» en lo alto de un módulo CommonJS termina el módulo.
+const htmlpdf = require('./htmlpdf.cjs');
+if (htmlpdf.wanted(process.argv)) {
+  htmlpdf.runCli(require('electron'), require('./i18n.cjs'));
+  return;
+}
+
 const E2E = !!process.env.SPIDERPDF_USER_DATA && !app.isPackaged;
 if (E2E) app.setPath('userData', process.env.SPIDERPDF_USER_DATA);
 /** Registro de eventos del proceso principal, solo en las pruebas e2e (<userData>/e2e.log). */
