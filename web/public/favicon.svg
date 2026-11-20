@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 64 64">
+  <title>SpiderPDF (16-32 px)</title>
+  <rect width="64" height="64" rx="13" fill="#6A35E8"/>
+  <path d="M14 6H42L52 16V56a2 2 0 0 1-2 2H14a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Z" fill="#FFFFFF"/>
+  <path d="M42 6V14a2 2 0 0 0 2 2H52Z" fill="#6A35E8" fill-opacity="0.4"/>
+  <g fill="none" stroke="#6A35E8" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M13 7L37 7M13 7L30 24M13 7L13 31"/>
+    <path d="M25 7L21.5 15.5L13 19M37 7L30 24L13 31"/>
+  </g>
+  <path d="M30 24V36" stroke="#6A35E8" stroke-width="3" stroke-linecap="round"/>
+  <g fill="none" stroke="#6A35E8" stroke-width="3.6" stroke-linecap="round">
+    <path d="M24 39L19 35M24 47L19 51M36 39L41 35M36 47L41 51"/>
+  </g>
+  <circle cx="30" cy="43" r="7" fill="#6A35E8"/>
+</svg>

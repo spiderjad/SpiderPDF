@@ -30,6 +30,31 @@ proyecto: se pasa como variable de entorno al publicar.
 5. En GitHub → Releases → el borrador → revisa las novedades → comprueba que **«Set as a pre-release» está
    desmarcado** (el actualizador no mira las pre-releases) → **Publish release**. Desde ese momento, las copias
    instaladas la encuentran al arrancar (o con Preferencias → Actualizaciones → «Buscar ahora»).
+6. Sube la web (ver abajo): así https://pdf.spiderjad.com tiene la misma versión y su botón «Descargar para Windows»
+   lleva a este instalador.
+
+## La web (https://pdf.spiderjad.com)
+
+Es la misma interfaz compilada para el navegador (`npm run web:build` → `dist-web/`), con lo que necesita una página
+pública: descripción para buscadores, imagen para redes, iconos, `robots.txt` y `sitemap.xml` (`vite.config.js`,
+archivos fijos en `web/public/`). En la página vacía sale «SpiderPDF para Windows»: versión, «Novedades» y
+«Descargar para Windows», que descarga `SpiderPDF-Setup-<versión>.exe` de la release de **esa misma versión**.
+
+Se sube por FTP a Hostinger con `npm run web:deploy` (`build/web-deploy.cjs`, con el curl de Windows y TLS). **No sube
+nada si el instalador de esa versión no está publicado** en GitHub (paso 5): la web nunca enlaza a un .exe que no
+existe. Sube primero todo y al final `index.html`, así la web cambia de versión de golpe.
+
+```powershell
+$env:SPIDERPDF_FTP_HOST = 'ftp.spiderjad.com'                      # los de hPanel → Archivos → Cuentas FTP
+$env:SPIDERPDF_FTP_USER = 'usuario'
+$env:SPIDERPDF_FTP_DIR = '/domains/spiderjad.com/public_html/pdf'   # la carpeta del subdominio
+$env:SPIDERPDF_FTP_PASSWORD = Read-Host 'Contraseña FTP'           # solo en esta terminal; nunca en archivos
+npm run web:deploy
+Remove-Item Env:SPIDERPDF_FTP_PASSWORD
+```
+
+Para ver qué subiría sin conectar: `node build/web-deploy.cjs --dry-run`. Si el servidor no admite FTP con TLS,
+`$env:SPIDERPDF_FTP_PLAIN = '1'` (la contraseña viajaría sin cifrar: mejor activar FTPS en Hostinger).
 
 ## Si algo sale mal
 

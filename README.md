@@ -14,6 +14,9 @@ documentos no se suben a ningún servicio. Interfaz en español, inglés y catal
 - Al instalar hay que aceptar los términos y condiciones.
 - Después, SpiderPDF se actualiza solo: descarga las versiones nuevas y se instalan al reiniciar.
 
+Sin instalar nada: **[pdf.spiderjad.com](https://pdf.spiderjad.com)**, la misma aplicación en el navegador (los archivos
+tampoco salen de tu equipo).
+
 Qué trae cada versión: **[Novedades](docs/novedades.md)**.
 
 ## Qué hace

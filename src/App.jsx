@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { FilePlus2, FolderOpen, CircleCheck, CircleAlert, FileText, LoaderCircle, LockKeyhole, ScanText, X } from 'lucide-react';
+import { Download, FilePlus2, FolderOpen, CircleCheck, CircleAlert, FileText, LoaderCircle, LockKeyhole, ScanText, X } from 'lucide-react';
 import { useDelayed } from './useDelayed.js';
 import { pagesFrom, targetKeys } from './state.js';
 import { tabsReducer, initialTabs, activeTab, tabById, isBlank, dirtyTabs, findTabByPath, cycleTab, sessionOf, snapshotDoc, restoreDoc, newTabId } from './tabs.js';
@@ -62,6 +62,7 @@ import ErrorBoundary from './components/ErrorBoundary.jsx';
 import SearchBar, { useSearch } from './components/SearchBar.jsx';
 import { selectedText } from './textGeom.js';
 import { t, useT, setLang, resolveLang, getLang } from './i18n/index.js';
+import { installerUrl, NEWS_URL } from './site.js';
 
 /** Acciones que chocan con una tarea en curso (abrir, guardar…): se ignoran mientras dure. */
 // Cambiar, cerrar o mover pestañas también: la tarea es de la pestaña en la que empezó.
@@ -1933,7 +1934,7 @@ export default function App() {
 function EmptyState({ busy, preparing, fileOver, onOpen, onNew, ...drop }) {
   const t = useT();
   return (
-    <div {...drop} className="grid h-full place-items-center bg-desk p-8">
+    <div {...drop} className="flex h-full flex-col items-center justify-center gap-4 overflow-auto bg-desk p-8">
       <div className={`flex w-full max-w-[440px] flex-col items-center rounded-2xl border-2 border-dashed px-8 py-10 text-center transition-colors ${fileOver ? 'border-accent bg-accent-soft' : 'border-line-strong bg-panel/60'}`}>
         <AppIcon size={88} alt="SpiderPDF" className={`mb-6 transition-transform duration-150 ease-out ${fileOver ? 'scale-110' : ''}`} />
         <h1 className="text-xl font-semibold tracking-tight">{fileOver ? t('core.empty.drop') : t('core.empty.title')}</h1>
@@ -1968,7 +1969,36 @@ function EmptyState({ busy, preparing, fileOver, onOpen, onNew, ...drop }) {
           </div>
         )}
       </div>
+      {__WEB__ && <DesktopDownload />}
     </div>
+  );
+}
+
+/**
+ * Solo en la versión web (pdf.spiderjad.com): el instalador de Windows de esta misma versión y las novedades
+ * (src/site.js). Enlaces normales: en el navegador abren la descarga y GitHub.
+ */
+function DesktopDownload() {
+  const t = useT();
+  return (
+    <section aria-labelledby="web-desktop" className="flex w-full max-w-[440px] flex-wrap items-center gap-x-4 gap-y-3 rounded-xl border border-line bg-panel px-5 py-4">
+      <div className="min-w-[180px] flex-1">
+        <h2 id="web-desktop" className="text-sm font-semibold">{t('core.web.desktopTitle')}</h2>
+        <p className="mt-0.5 text-sm text-muted">{t('core.web.desktopText')}</p>
+        <p className="mt-1 text-xs text-muted">
+          {t('core.web.version', { version: __APP_VERSION__ })}
+          {' · '}
+          <a href={NEWS_URL} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-ink">{t('core.web.news')}</a>
+        </p>
+      </div>
+      <a
+        href={installerUrl(__APP_VERSION__)}
+        className="flex h-9 shrink-0 items-center gap-2 rounded-lg border border-line-strong px-3.5 text-sm font-medium transition-[background-color,scale] hover:bg-hover active:scale-[0.98]"
+      >
+        <Download size={16} strokeWidth={1.75} className="text-muted" />
+        {t('core.web.download')}
+      </a>
+    </section>
   );
 }
 

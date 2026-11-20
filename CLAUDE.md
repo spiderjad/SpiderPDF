@@ -854,6 +854,19 @@ Para la skill de documentación de TIC (`/pdf-tic`), en lugar de Chrome.
   instalador, revisar los avisos de makensis** (`DEBUG=electron-builder`): hoy solo esos 5.
 - Comprobar a mano: `test/installer/comprobar-registro.ps1` (solo lee; `-Desinstalado` tras desinstalar).
 
+**Versión web (https://pdf.spiderjad.com, Hostinger por FTP):** la misma interfaz compilada para el navegador.
+- `npm run web:build` = `vite build --mode web` → `dist-web/` (no `dist/`). En modo `web`, `vite.config.js` añade el
+  `<head>` público (descripción, Open Graph, JSON-LD con la versión, iconos), `sitemap.xml` con la fecha y los
+  archivos de `web/public/` (favicon, apple-touch-icon, og-image, robots.txt; recuperados de la web publicada el 20/11).
+  La app de escritorio no lleva nada de eso (`publicDir: false`).
+- Constantes de compilación: `__APP_VERSION__` (package.json) y `__WEB__` (solo en modo web). Con `__WEB__`, la página
+  vacía muestra `DesktopDownload` (App.jsx): «SpiderPDF para Windows», versión, «Novedades» y «Descargar para
+  Windows» → `installerUrl(versión)` de `src/site.js` (el .exe de la release de esa versión).
+- `npm run web:deploy` (`build/web-deploy.cjs`, `test/webdeploy.test.js`): comprueba que ese .exe está publicado
+  (HEAD → 302), compila y sube con `curl -K -` (FTPS; credenciales por stdin, `SPIDERPDF_FTP_*`), `index.html` al final.
+  Pasos en `docs/publicar-version.md` («La web»).
+- Límite conocido: en un móvil la barra de herramientas no cabe (la página mide ~830 px de ancho).
+
 ## Hoja de ruta
 4. Hecho: OCR, Compartir, Contraseñas y Reducir tamaño (ver arriba). Falta que Diego pruebe las contraseñas en Edge
    y Acrobat con `test/out/contrasenas/` y que los reducidos se ven bien.

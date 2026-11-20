@@ -27,3 +27,6 @@ desktop.ini
 # Ayudante nativo: se compila al empaquetar (npm run helper)
 build/helper/SpiderPdfHelper.exe
 build/helper/SpiderPDF.com
+
+# Versión web compilada (npm run web:build)
+dist-web/
